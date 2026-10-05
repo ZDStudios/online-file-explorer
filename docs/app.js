@@ -14,6 +14,14 @@ let activeDevice = null;
 let cwd = '';
 let curEntries = [];
 
+// connection lifecycle
+let creds = { relay: '', token: '' };
+let reconnectTimer = null;
+let attempt = 0;
+let everOnline = false;
+let authFailed = false;
+let inApp = false;
+
 // ---- theme -----------------------------------------------------------------
 (function initTheme() {
   const t = localStorage.getItem(LS.theme);
@@ -46,48 +54,124 @@ function relayToWs(url) {
   return 'wss://' + url;
 }
 
-function connect(relay, token) {
-  const base = relayToWs(relay);
+// ---- status beacon ----
+function beacon(state, label) {
+  const b = $('beacon');
+  b.setAttribute('data-state', state);
+  $('beacon-label').textContent = label || state;
+  // mirror into header chip
+  $('conn-dot').className = 'dot ' + (state === 'online' ? 'on' : state === 'offline' ? 'off' : '');
+  $('conn-txt').textContent = label || state;
+}
+
+function showWait(title, sub) {
+  $('gate-form').style.display = 'none';
+  $('gate-wait').style.display = 'block';
+  $('gate').style.display = 'flex';
+  if (title) $('wait-title').textContent = title;
+  if (sub != null) $('wait-sub').textContent = sub;
+}
+function showForm(err) {
+  $('gate-wait').style.display = 'none';
+  $('gate-form').style.display = 'block';
+  $('gate').style.display = 'flex';
+  $('g-err').textContent = err || '';
+}
+
+// Begin (or resume) the connection loop. Keeps retrying through a cold boot;
+// the saved password is verified by the server as soon as it answers.
+function startConnecting() {
+  authFailed = false;
+  clearTimeout(reconnectTimer);
+  dial();
+}
+
+function scheduleRetry() {
+  if (authFailed) return;
+  attempt++;
+  const delay = Math.min(2000 + attempt * 1000, 8000);
+  // red while we sit idle between attempts, with a live countdown
+  if (!inApp) beacon('offline', 'server offline');
+  else beacon('offline', 'reconnecting');
+  let left = Math.ceil(delay / 1000);
+  const tick = () => {
+    if (!inApp) {
+      $('wait-meta').textContent = everOnline
+        ? `Lost the server. Retrying in ${left}s…`
+        : `Attempt ${attempt} · still waking up · retrying in ${left}s`;
+    }
+    left--;
+  };
+  tick();
+  clearInterval(scheduleRetry._iv);
+  scheduleRetry._iv = setInterval(tick, 1000);
+  reconnectTimer = setTimeout(() => { clearInterval(scheduleRetry._iv); dial(); }, delay);
+}
+
+function dial() {
+  let base;
+  try { base = relayToWs(creds.relay); } catch { showForm('That relay URL looks invalid.'); return; }
   const u = new URL(base);
   u.searchParams.set('role', 'web');
-  u.searchParams.set('token', token);
+  u.searchParams.set('token', creds.token);
 
-  setConn(false, 'connecting…');
-  ws = new WebSocket(u.toString());
+  beacon('connecting', inApp ? 'reconnecting' : 'starting');
+  if (!inApp) showWait(everOnline ? 'Reconnecting…' : 'Waking the server…',
+    everOnline ? 'The connection dropped. Getting it back.' : 'Free servers sleep when idle. This can take up to a minute — hang tight.');
 
-  ws.onopen = () => setConn(true, 'connected');
-  ws.onclose = () => {
-    setConn(false, 'disconnected');
-    for (const p of pending.values()) { clearTimeout(p.timer); p.reject(new Error('connection closed')); }
-    pending.clear();
+  try { ws = new WebSocket(u.toString()); }
+  catch { scheduleRetry(); return; }
+
+  let settled = false; // got a definitive answer (auth ok/fail) on this socket?
+
+  ws.onopen = () => {
+    beacon('connecting', 'authenticating');
+    if (!inApp) { $('wait-title').textContent = 'Checking your password…'; $('wait-meta').textContent = ''; }
   };
-  ws.onerror = () => setConn(false, 'error');
+
   ws.onmessage = (ev) => {
     let msg; try { msg = JSON.parse(ev.data); } catch { return; }
     if (msg.type === 'error') {
-      if (msg.error === 'auth_failed') { onAuthFail(); }
+      if (msg.error === 'auth_failed') { settled = true; onAuthFail(); }
       return;
     }
-    if (msg.type === 'hello') return;
+    if (msg.type === 'hello') { settled = true; onOnline(); return; }
     if (msg.type === 'devices') { devices = msg.devices || []; renderDevices(); return; }
     if (msg.type === 'resp' && msg.reqId != null && pending.has(msg.reqId)) {
       const p = pending.get(msg.reqId); pending.delete(msg.reqId); clearTimeout(p.timer);
       if (msg.ok) p.resolve(msg.result); else p.reject(new Error(msg.error || 'request failed'));
     }
   };
+
+  ws.onclose = () => {
+    for (const p of pending.values()) { clearTimeout(p.timer); p.reject(new Error('connection closed')); }
+    pending.clear();
+    if (authFailed) return;
+    scheduleRetry();
+  };
+  ws.onerror = () => { /* onclose handles retry */ };
 }
 
-function setConn(ok, txt) {
-  $('conn-dot').className = 'dot ' + (ok ? 'on' : 'off');
-  $('conn-txt').textContent = txt;
+function onOnline() {
+  attempt = 0; everOnline = true; clearInterval(scheduleRetry._iv);
+  beacon('online', 'online');
+  if (!inApp) {
+    inApp = true;
+    $('gate').style.display = 'none';
+    $('app').style.display = 'grid';
+    if (!activeDevice && devices.length === 1) selectDevice(devices[0].id);
+  }
 }
 
 function onAuthFail() {
+  authFailed = true;
+  clearTimeout(reconnectTimer); clearInterval(scheduleRetry._iv);
   localStorage.removeItem(LS.token);
-  if (ws) ws.close();
+  if (ws) { try { ws.close(); } catch {} }
+  inApp = false;
   $('app').style.display = 'none';
-  $('gate').style.display = 'flex';
-  $('g-err').textContent = 'Authentication failed. Check your token.';
+  beacon('offline', 'wrong password');
+  showForm('That password was rejected by the server.');
 }
 
 function rpc(op, extra, timeoutMs) {
@@ -114,14 +198,15 @@ function renderDevices() {
     return;
   }
   box.innerHTML = '';
-  for (const d of devices) {
+  devices.forEach((d, idx) => {
     const el = document.createElement('div');
     el.className = 'device' + (d.id === activeDevice ? ' active' : '');
+    el.style.animationDelay = Math.min(idx * 40, 300) + 'ms';
     el.innerHTML = `<div class="name"><span class="dot on"></span>${esc(d.name)}</div>
       <div class="meta">${platLabel(d.platform)} · up ${since(d.connectedAt)}</div>`;
     el.onclick = () => selectDevice(d.id);
     box.appendChild(el);
-  }
+  });
   if (activeDevice && !devices.find(d => d.id === activeDevice)) { activeDevice = null; showPlaceholder('That device went offline.'); }
 }
 function since(ts) {
@@ -180,7 +265,7 @@ function renderListing(r) {
     const icon = e.type === 'dir' ? '📁' : iconFor(e.name);
     const size = e.type === 'dir' ? '—' : fmtSize(e.size);
     const when = e.mtime ? fmtDate(e.mtime) : '';
-    return `<tr class="row" data-i="${i}">
+    return `<tr class="row" data-i="${i}" style="animation-delay:${Math.min(i * 18, 400)}ms">
       <td><div class="fname"><span class="ico">${icon}</span><span>${esc(e.name)}</span></div></td>
       <td class="size">${size}</td>
       <td class="mtime">${when}</td>
@@ -351,8 +436,9 @@ function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'
 // ---- wiring ----------------------------------------------------------------
 function startApp(relay, token) {
   localStorage.setItem(LS.relay, relay); localStorage.setItem(LS.token, token);
-  $('gate').style.display = 'none'; $('app').style.display = 'grid';
-  connect(relay, token);
+  creds = { relay, token };
+  attempt = 0; everOnline = false; inApp = false;
+  startConnecting();
 }
 
 $('g-go').onclick = () => {
@@ -361,6 +447,15 @@ $('g-go').onclick = () => {
   $('g-err').textContent = ''; startApp(relay, token);
 };
 $('g-token').addEventListener('keydown', e => { if (e.key === 'Enter') $('g-go').click(); });
+$('g-relay').addEventListener('keydown', e => { if (e.key === 'Enter') $('g-token').focus(); });
+$('wait-cancel').onclick = () => {
+  authFailed = true; clearTimeout(reconnectTimer); clearInterval(scheduleRetry._iv);
+  if (ws) { try { ws.close(); } catch {} }
+  localStorage.removeItem(LS.token);
+  beacon('offline', 'offline');
+  showForm('');
+  $('g-token').value = ''; $('g-token').focus();
+};
 
 $('btn-logout').onclick = () => { localStorage.removeItem(LS.token); if (ws) ws.close(); location.reload(); };
 $('btn-theme').onclick = toggleTheme;
@@ -394,8 +489,10 @@ function parentOf(p) {
 
 // prefill + auto-connect if we have saved creds
 (function boot() {
+  beacon('offline', 'offline');
   const relay = localStorage.getItem(LS.relay) || '';
   const token = localStorage.getItem(LS.token) || '';
   $('g-relay').value = relay;
-  if (relay && token) startApp(relay, token); else { $('g-relay').value = relay; $('g-token').focus && $('g-token').focus(); }
+  if (relay && token) startApp(relay, token);
+  else { showForm(''); setTimeout(() => $('g-relay').focus(), 100); }
 })();

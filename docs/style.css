@@ -99,6 +99,75 @@ tr.row:hover .rowacts { opacity: 1; }
 .gate button { width: 100%; margin-top: 20px; }
 .gate .err { color: var(--bad); font-size: 13px; margin-top: 12px; min-height: 18px; }
 .muted { color: var(--muted); }
+
+/* ---- corner status beacon ---- */
+.beacon {
+  position: fixed; bottom: 16px; left: 16px; z-index: 90;
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px 7px 10px; border: 1px solid var(--rule); border-radius: 999px;
+  background: var(--panel); box-shadow: 0 4px 16px rgba(0,0,0,.14);
+  font: 500 11px/1 var(--mono); letter-spacing: .5px; text-transform: uppercase; color: var(--muted);
+  opacity: 0; transform: translateY(8px); animation: fadeInUp .5s .2s ease both;
+  user-select: none;
+}
+.beacon .led {
+  width: 11px; height: 11px; border-radius: 50%; background: var(--muted);
+  position: relative; transition: background .4s, box-shadow .4s;
+}
+.beacon .led::after {
+  content: ""; position: absolute; inset: -4px; border-radius: 50%;
+  background: currentColor; opacity: .35; animation: ping 1.8s ease-out infinite;
+}
+.beacon[data-state="offline"] .led { background: var(--bad); color: var(--bad); box-shadow: 0 0 10px var(--bad); }
+.beacon[data-state="connecting"] .led { background: #e0963f; color: #e0963f; box-shadow: 0 0 10px #e0963f; }
+.beacon[data-state="online"] .led { background: var(--ok); color: var(--ok); box-shadow: 0 0 10px var(--ok); }
+.beacon[data-state="offline"] .led::after { animation: none; opacity: 0; }
+.beacon[data-state="connecting"] .led::after { animation-duration: .9s; }
+
+/* ---- waiting / booting card ---- */
+.card.wait { text-align: center; }
+.card.wait h2 { margin: 6px 0 4px; }
+.card.wait p { margin: 0 auto 6px; max-width: 320px; }
+.orbit-spin { width: 64px; height: 64px; margin: 6px auto 20px; position: relative; }
+.orbit-spin .planet {
+  position: absolute; inset: 22px; border-radius: 50%; background: var(--accent);
+  box-shadow: 0 0 18px var(--accent); animation: breathe 2.4s ease-in-out infinite;
+}
+.orbit-spin .moon { position: absolute; inset: 0; animation: spin 1.5s linear infinite; }
+.orbit-spin .moon::after {
+  content: ""; position: absolute; top: -2px; left: 50%; width: 9px; height: 9px;
+  margin-left: -4.5px; border-radius: 50%; background: var(--ink);
+}
+.wait-meta { font: 12px/1.5 var(--mono); color: var(--muted); min-height: 18px; margin-top: 10px; }
+button.ghost { background: transparent; border-color: transparent; color: var(--muted); margin-top: 14px; width: 100%; }
+button.ghost:hover { background: var(--hover); color: var(--ink); }
+
+/* ---- site-wide animations ---- */
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes popIn { from { opacity: 0; transform: scale(.94) translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes breathe { 0%,100% { transform: scale(1); opacity: .9; } 50% { transform: scale(1.12); opacity: 1; } }
+@keyframes ping { 0% { transform: scale(.7); opacity: .5; } 100% { transform: scale(1.9); opacity: 0; } }
+@keyframes toastIn { from { opacity: 0; transform: translateX(30px) scale(.96); } to { opacity: 1; transform: none; } }
+
+.gate .card { animation: popIn .5s cubic-bezier(.2,.8,.25,1) both; }
+.sheet { animation: popIn .34s cubic-bezier(.2,.8,.25,1) both; }
+.overlay { transition: background .25s; }
+.toast { animation: toastIn .32s cubic-bezier(.2,.8,.25,1) both; transition: opacity .3s, transform .3s; }
+.device { animation: fadeInUp .4s ease both; }
+tr.row { animation: fadeInUp .32s ease both; }
+.crumbs span { transition: color .15s; }
+button { transition: background .14s, transform .08s, filter .14s; }
+button:active { transform: translateY(1px) scale(.985); }
+.row .ico, .fname span { transition: transform .12s; }
+.status .dot { transition: background .4s; }
+.app { animation: fadeInUp .45s ease both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::after, *::before { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+  .beacon .led::after { opacity: 0; }
+}
+
 @media (max-width: 720px) {
   .app { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; }
   aside { border-right: 0; border-bottom: 1px solid var(--rule); max-height: 180px; }
