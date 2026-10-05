@@ -1,0 +1,24 @@
+{
+  "name": "orbit-agent",
+  "version": "1.0.0",
+  "description": "Device agent that connects to the Orbit relay and serves local files.",
+  "main": "agent.js",
+  "bin": {
+    "orbit-agent": "agent.js"
+  },
+  "type": "commonjs",
+  "scripts": {
+    "start": "node agent.js",
+    "build": "pkg . --targets node22-win-x64 --output dist/orbit-agent.exe"
+  },
+  "pkg": {
+    "assets": [],
+    "scripts": []
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@yao-pkg/pkg": "^6.6.0"
+  }
+}

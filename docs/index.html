@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orbit — your files, anywhere</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="gate" id="gate">
+  <div class="card">
+    <div class="brand" style="margin-bottom:18px"><span class="mark"></span><h1>Orbit</h1></div>
+    <h2>Connect</h2>
+    <p>Enter your relay address and access token to reach your devices.</p>
+    <label>Relay URL</label>
+    <input id="g-relay" placeholder="https://your-service.onrender.com" autocomplete="off">
+    <label>Access token</label>
+    <input id="g-token" type="password" placeholder="shared secret" autocomplete="off">
+    <button class="primary" id="g-go">Connect</button>
+    <div class="err" id="g-err"></div>
+  </div>
+</div>
+
+<div class="app" id="app" style="display:none">
+  <header>
+    <div class="brand"><span class="mark"></span><h1>Orbit</h1><span class="tag">file explorer</span></div>
+    <div class="spacer"></div>
+    <div class="status"><span class="dot" id="conn-dot"></span><span id="conn-txt">connecting…</span></div>
+    <button id="btn-theme" title="Toggle theme">◑</button>
+    <button id="btn-logout">Disconnect</button>
+  </header>
+
+  <aside>
+    <div class="side-h">Devices</div>
+    <div id="devices"></div>
+  </aside>
+
+  <main>
+    <div class="bar">
+      <button id="btn-up" title="Parent folder">↑ Up</button>
+      <div class="crumbs" id="crumbs"></div>
+      <button id="btn-refresh" title="Refresh">⟳</button>
+      <button id="btn-mkdir">New folder</button>
+      <button class="primary" id="btn-upload">Upload</button>
+      <input type="file" id="file-input" multiple style="display:none">
+    </div>
+    <div class="listing" id="listing">
+      <div class="placeholder"><div class="big">No device selected</div><div>Pick a device on the left to browse its files.</div></div>
+    </div>
+  </main>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="sheet">
+    <div class="sheet-h">
+      <span class="ttl" id="v-title"></span>
+      <span class="size" id="v-size"></span>
+      <button id="v-close">Close</button>
+    </div>
+    <div class="sheet-b" id="v-body"></div>
+    <div class="sheet-f" id="v-foot" style="display:none">
+      <span class="muted" id="v-note"></span>
+      <div class="spacer"></div>
+      <button id="v-download">Download</button>
+      <button class="primary" id="v-save" style="display:none">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
