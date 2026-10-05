@@ -9,4 +9,4 @@ services:
     healthCheckPath: /health
     envVars:
       - key: AUTH_TOKEN
-        generateValue: true
+        value: Orbit123!
