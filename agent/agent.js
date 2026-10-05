@@ -24,19 +24,24 @@ const WebSocket = require('ws');
 
 // ---- configuration ---------------------------------------------------------
 
+// Build-time defaults. The consumer build ships these empty; the "auto" build
+// bakes in the relay + token so the .exe connects the moment it's launched.
+let baked = { relay: '', token: '', name: '', root: '' };
+try { baked = Object.assign(baked, require('./baked.js')); } catch { /* no baked config */ }
+
 function loadConfig() {
   const base = process.pkg ? path.dirname(process.execPath) : __dirname;
   let file = {};
   try {
     const raw = fs.readFileSync(path.join(base, 'config.json'), 'utf8');
     file = JSON.parse(raw);
-  } catch { /* no config file, fall back to env */ }
+  } catch { /* no config file, fall back to env / baked */ }
 
   return {
-    relay: process.env.ORBIT_RELAY || file.relay || '',
-    token: process.env.ORBIT_TOKEN || file.token || '',
-    name: process.env.ORBIT_NAME || file.name || os.hostname(),
-    root: process.env.ORBIT_ROOT || file.root || '',
+    relay: process.env.ORBIT_RELAY || file.relay || baked.relay || '',
+    token: process.env.ORBIT_TOKEN || file.token || baked.token || '',
+    name: process.env.ORBIT_NAME || file.name || baked.name || os.hostname(),
+    root: process.env.ORBIT_ROOT || file.root || baked.root || '',
   };
 }
 

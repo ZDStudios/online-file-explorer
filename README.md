@@ -42,7 +42,16 @@ branch `main`, folder **`/docs`**. Your client will be live at
 
 ## 3. Run the agent on a computer
 
-Download `orbit-agent.exe` from the [latest release](https://github.com/ZDStudios/online-file-explorer/releases/latest) (Windows) and double-click it — it asks for the relay URL, token, device name, and optional folder on first run. Or run from source:
+Grab a Windows build from the [latest release](https://github.com/ZDStudios/online-file-explorer/releases/latest). There are two:
+
+- **`orbit-agent-auto.exe`** — relay URL and password are baked in. Just
+  double-click it; it connects immediately and shares the whole machine. (This is
+  the ready-to-go build for this deployment.)
+- **`orbit-agent.exe`** — the consumer build. On first run it asks for the relay
+  URL, password, device name, and an optional folder, then saves them to
+  `config.json` next to itself. Use this to point the agent at your own relay.
+
+Or run from source:
 
 ```bash
 cd agent
@@ -83,5 +92,8 @@ You can:
 ```bash
 cd agent
 npm install
-npm run build   # -> dist/orbit-agent.exe
+npm run build   # -> dist/orbit-agent.exe and dist/orbit-agent-auto.exe
 ```
+
+`build.js` produces both targets. The baked-in relay/password for the auto build
+live at the top of `build.js` — edit them there to bake in your own.
