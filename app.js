@@ -17,6 +17,7 @@ let devices = [];
 let activeDevice = null;
 let cwd = '';
 let curEntries = [];
+let navHistory = [];   // folders visited, for the Back button
 
 // connection lifecycle
 let creds = { relay: '', token: '' };
@@ -221,7 +222,25 @@ function since(ts) {
 
 async function selectDevice(id) {
   activeDevice = id; renderDevices();
-  cwd = ''; await browse('');
+  cwd = ''; navHistory = []; updateBack();
+  await browse('');
+}
+
+function updateBack() {
+  const b = $('btn-back'); if (b) b.disabled = navHistory.length === 0;
+}
+
+// Navigate to a folder, remembering where we came from (for Back).
+function navTo(p) {
+  if (p !== cwd) { navHistory.push(cwd); updateBack(); }
+  browse(p);
+}
+
+function goBack() {
+  if (!navHistory.length) return;
+  const prev = navHistory.pop();
+  updateBack();
+  browse(prev);
 }
 
 // ---- browsing --------------------------------------------------------------
@@ -245,7 +264,7 @@ async function browse(p) {
 function renderCrumbs(r) {
   const c = $('crumbs'); c.innerHTML = '';
   const root = document.createElement('span'); root.textContent = '⌂';
-  root.onclick = () => browse(''); c.appendChild(root);
+  root.onclick = () => navTo(''); c.appendChild(root);
   if (!cwd) return;
   const win = cwd.includes('\\') && !cwd.startsWith('/');
   const sepChar = win ? '\\' : '/';
@@ -257,7 +276,7 @@ function renderCrumbs(r) {
     else acc = acc + '/' + part;
     const span = document.createElement('span'); span.textContent = part;
     const target = acc;
-    span.onclick = () => browse(target); c.appendChild(span);
+    span.onclick = () => navTo(target); c.appendChild(span);
   });
 }
 
@@ -282,7 +301,7 @@ function renderListing(r) {
   $('listing').innerHTML = `<table><thead><tr><th>Name</th><th>Size</th><th>Modified</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
   $('listing').querySelectorAll('tr.row').forEach(tr => {
     const e = entries[+tr.dataset.i];
-    tr.querySelector('.fname').onclick = () => e.type === 'dir' ? browse(e.path) : openFile(e);
+    tr.querySelector('.fname').onclick = () => e.type === 'dir' ? navTo(e.path) : openFile(e);
     tr.querySelectorAll('[data-act]').forEach(b => {
       b.onclick = (ev) => { ev.stopPropagation(); const a = b.dataset.act;
         if (a === 'dl') downloadFile(e); else if (a === 'rn') renameEntry(e); else if (a === 'del') deleteEntry(e); };
@@ -463,7 +482,8 @@ $('wait-cancel').onclick = () => {
 
 $('btn-logout').onclick = () => { localStorage.removeItem(LS.token); if (ws) ws.close(); location.reload(); };
 $('btn-theme').onclick = toggleTheme;
-$('btn-up').onclick = () => { if (cwd) browse(parentOf(cwd)); };
+$('btn-back').onclick = goBack;
+$('btn-up').onclick = () => { if (cwd) navTo(parentOf(cwd)); };
 $('btn-refresh').onclick = () => activeDevice && browse(cwd);
 $('btn-mkdir').onclick = () => activeDevice && mkdir();
 $('btn-upload').onclick = () => activeDevice && $('file-input').click();
