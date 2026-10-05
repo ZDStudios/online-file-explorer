@@ -42,7 +42,7 @@ branch `main`, folder **`/docs`**. Your client will be live at
 
 ## 3. Run the agent on a computer
 
-Download `orbit-agent.exe` from the [latest release](https://github.com/ZDStudios/online-file-explorer-/releases/latest) (Windows) and double-click it — it asks for the relay URL, token, device name, and optional folder on first run. Or run from source:
+Download `orbit-agent.exe` from the [latest release](https://github.com/ZDStudios/online-file-explorer/releases/latest) (Windows) and double-click it — it asks for the relay URL, token, device name, and optional folder on first run. Or run from source:
 
 ```bash
 cd agent
