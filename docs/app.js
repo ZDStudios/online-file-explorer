@@ -610,6 +610,30 @@ $('set-relay-save').onclick = () => {
 };
 $('btn-back').onclick = goBack;
 $('btn-up').onclick = () => { if (cwd) navTo(parentOf(cwd)); };
+
+// jump straight to a typed path (e.g. C:\Users\Zayn\My Drive)
+function showPathInput() {
+  if (!activeDevice) { toast('Pick a device first.', 'bad'); return; }
+  $('crumbs').style.display = 'none';
+  const i = $('path-input'); i.style.display = 'block'; $('path-go').style.display = 'inline-block';
+  i.value = cwd; i.focus(); i.select();
+}
+function hidePathInput() {
+  $('path-input').style.display = 'none'; $('path-go').style.display = 'none';
+  $('crumbs').style.display = '';
+}
+function submitPath() {
+  const v = $('path-input').value.trim();
+  hidePathInput();
+  if (v) navTo(v);
+}
+$('btn-goto').onclick = showPathInput;
+$('path-go').onclick = submitPath;
+$('path-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitPath();
+  else if (e.key === 'Escape') hidePathInput();
+});
+$('path-input').addEventListener('blur', () => setTimeout(hidePathInput, 120)); // allow Go click
 $('btn-refresh').onclick = () => activeDevice && browse(cwd);
 $('btn-mkdir').onclick = () => activeDevice && mkdir();
 $('btn-newfile').onclick = () => activeDevice && openNewFile();
