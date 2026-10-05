@@ -28,17 +28,14 @@ let authFailed = false;
 let inApp = false;
 
 // ---- theme -----------------------------------------------------------------
-(function initTheme() {
-  const t = localStorage.getItem(LS.theme);
-  if (t) document.documentElement.setAttribute('data-theme', t);
-})();
-function toggleTheme() {
-  const cur = document.documentElement.getAttribute('data-theme');
-  const dark = cur ? cur === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-  const next = dark ? 'light' : 'dark';
-  document.documentElement.setAttribute('data-theme', next);
-  localStorage.setItem(LS.theme, next);
+function applyTheme(mode) {
+  // mode: 'light' | 'dark' | 'system'
+  if (mode === 'system' || !mode) { document.documentElement.removeAttribute('data-theme'); localStorage.removeItem(LS.theme); }
+  else { document.documentElement.setAttribute('data-theme', mode); localStorage.setItem(LS.theme, mode); }
+  const seg = document.getElementById('set-theme');
+  if (seg) seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.theme === (mode || 'system')));
 }
+(function initTheme() { applyTheme(localStorage.getItem(LS.theme) || 'system'); })();
 
 // ---- toast -----------------------------------------------------------------
 function toast(msg, kind) {
@@ -456,6 +453,111 @@ function fmtDate(ms) {
 }
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
 
+// ---- creating new files (txt / docx / pdf), generated in-browser ----------
+function escXml(s) { return String(s).replace(/[&<>]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c])); }
+
+function genTxt(content) { return new TextEncoder().encode(content || ''); }
+
+// minimal single-font PDF with the text laid out line by line
+function genPdf(content) {
+  const lines = (content || '').split(/\r?\n/);
+  const esc = (s) => s.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+  let text = 'BT /F1 12 Tf 72 720 Td 15 TL\n';
+  if (!lines.length || (lines.length === 1 && lines[0] === '')) text += '() Tj\n';
+  else lines.forEach((ln, i) => { text += (i ? 'T* ' : '') + '(' + esc(ln) + ') Tj\n'; });
+  text += 'ET';
+  const objs = [
+    '<</Type/Catalog/Pages 2 0 R>>',
+    '<</Type/Pages/Kids[3 0 R]/Count 1>>',
+    '<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>',
+    '<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>',
+    '<</Length ' + text.length + '>>\nstream\n' + text + '\nendstream',
+  ];
+  let pdf = '%PDF-1.4\n';
+  const offsets = [];
+  objs.forEach((o, i) => { offsets.push(pdf.length); pdf += (i + 1) + ' 0 obj\n' + o + '\nendobj\n'; });
+  const xref = pdf.length;
+  pdf += 'xref\n0 ' + (objs.length + 1) + '\n0000000000 65535 f \n';
+  offsets.forEach(off => { pdf += String(off).padStart(10, '0') + ' 00000 n \n'; });
+  pdf += 'trailer\n<</Size ' + (objs.length + 1) + '/Root 1 0 R>>\nstartxref\n' + xref + '\n%%EOF';
+  return new TextEncoder().encode(pdf);
+}
+
+// minimal .docx (a zip of OOXML parts)
+function crc32(bytes) {
+  let c = ~0;
+  for (let i = 0; i < bytes.length; i++) { c ^= bytes[i]; for (let k = 0; k < 8; k++) c = (c & 1) ? (c >>> 1) ^ 0xEDB88320 : c >>> 1; }
+  return (~c) >>> 0;
+}
+function zipStore(files) {
+  const enc = new TextEncoder();
+  const locals = []; const central = []; let offset = 0;
+  const u16 = (n) => [n & 255, (n >>> 8) & 255];
+  const u32 = (n) => [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255];
+  for (const f of files) {
+    const name = enc.encode(f.name);
+    const data = f.data; const crc = crc32(data); const size = data.length;
+    const lh = [].concat(u32(0x04034b50), u16(20), u16(0), u16(0), u16(0), u16(0), u32(crc), u32(size), u32(size), u16(name.length), u16(0));
+    const local = new Uint8Array(lh.length + name.length + size);
+    local.set(lh, 0); local.set(name, lh.length); local.set(data, lh.length + name.length);
+    locals.push(local);
+    const ch = [].concat(u32(0x02014b50), u16(20), u16(20), u16(0), u16(0), u16(0), u16(0), u32(crc), u32(size), u32(size), u16(name.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset));
+    const cent = new Uint8Array(ch.length + name.length);
+    cent.set(ch, 0); cent.set(name, ch.length);
+    central.push(cent);
+    offset += local.length;
+  }
+  const cdSize = central.reduce((s, c) => s + c.length, 0);
+  const eocd = new Uint8Array([].concat(u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length), u32(cdSize), u32(offset), u16(0)));
+  const total = offset + cdSize + eocd.length;
+  const out = new Uint8Array(total); let p = 0;
+  for (const l of locals) { out.set(l, p); p += l.length; }
+  for (const c of central) { out.set(c, p); p += c.length; }
+  out.set(eocd, p);
+  return out;
+}
+function genDocx(content) {
+  const paras = (content || '').split(/\r?\n/).map(ln =>
+    `<w:p><w:r><w:t xml:space="preserve">${escXml(ln)}</w:t></w:r></w:p>`).join('');
+  const enc = new TextEncoder();
+  const files = [
+    { name: '[Content_Types].xml', data: enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>') },
+    { name: '_rels/.rels', data: enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>') },
+    { name: 'word/document.xml', data: enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' + (paras || '<w:p/>') + '<w:sectPr/></w:body></w:document>') },
+  ];
+  return zipStore(files);
+}
+
+function openNewFile() {
+  if (!activeDevice) { toast('Pick a device first.', 'bad'); return; }
+  $('nf-name').value = ''; $('nf-content').value = ''; $('nf-note').textContent = '';
+  const txt = document.querySelector('input[name="nf-type"][value="txt"]'); if (txt) txt.checked = true;
+  $('nf-overlay').classList.add('show');
+  setTimeout(() => $('nf-name').focus(), 50);
+}
+function closeNewFile() { $('nf-overlay').classList.remove('show'); }
+
+async function createNewFile() {
+  const type = (document.querySelector('input[name="nf-type"]:checked') || {}).value || 'txt';
+  let name = $('nf-name').value.trim() || 'untitled';
+  const content = $('nf-content').value;
+  const dotExt = '.' + type;
+  if (ext(name) !== type) name += dotExt;
+  const sep = cwd.includes('\\') ? '\\' : '/';
+  const p = cwd ? cwd + (cwd.endsWith(sep) ? '' : sep) + name : name;
+  let bytes;
+  try {
+    bytes = type === 'pdf' ? genPdf(content) : type === 'docx' ? genDocx(content) : genTxt(content);
+  } catch (e) { toast('Could not build file: ' + e.message, 'bad'); return; }
+  try {
+    $('nf-note').textContent = 'Creating…';
+    await rpc('write', { path: p, data: bytesToB64(bytes) }, 120000);
+    toast('Created ' + name, 'ok');
+    closeNewFile();
+    browse(cwd);
+  } catch (e) { $('nf-note').textContent = ''; toast('Create failed: ' + e.message, 'bad'); }
+}
+
 // ---- wiring ----------------------------------------------------------------
 function startApp(relay, token) {
   localStorage.setItem(LS.relay, relay); localStorage.setItem(LS.token, token);
@@ -481,18 +583,52 @@ $('wait-cancel').onclick = () => {
 };
 
 $('btn-logout').onclick = () => { localStorage.removeItem(LS.token); if (ws) ws.close(); location.reload(); };
-$('btn-theme').onclick = toggleTheme;
+
+// settings
+function openSettings() {
+  applyTheme(localStorage.getItem(LS.theme) || 'system');
+  $('set-relay').value = creds.relay || localStorage.getItem(LS.relay) || DEFAULT_RELAY;
+  $('set-relay-note').textContent = '';
+  $('set-overlay').classList.add('show');
+}
+function closeSettings() { $('set-overlay').classList.remove('show'); }
+$('btn-settings').onclick = openSettings;
+$('set-close').onclick = closeSettings;
+$('set-overlay').onclick = (e) => { if (e.target === $('set-overlay')) closeSettings(); };
+$('set-theme').querySelectorAll('button').forEach(b => { b.onclick = () => applyTheme(b.dataset.theme); });
+$('set-relay-reset').onclick = () => { $('set-relay').value = DEFAULT_RELAY; $('set-relay-note').textContent = 'Reset to default — Save to apply.'; };
+$('set-relay-save').onclick = () => {
+  const relay = $('set-relay').value.trim();
+  if (!relay) { $('set-relay-note').textContent = 'Enter a URL or reset to default.'; return; }
+  localStorage.setItem(LS.relay, relay);
+  creds.relay = relay;
+  closeSettings();
+  // reconnect against the new server with the saved password
+  everOnline = false; attempt = 0;
+  if (ws) { try { ws.close(); } catch {} }
+  startConnecting();
+};
 $('btn-back').onclick = goBack;
 $('btn-up').onclick = () => { if (cwd) navTo(parentOf(cwd)); };
 $('btn-refresh').onclick = () => activeDevice && browse(cwd);
 $('btn-mkdir').onclick = () => activeDevice && mkdir();
+$('btn-newfile').onclick = () => activeDevice && openNewFile();
+$('nf-cancel').onclick = closeNewFile;
+$('nf-create').onclick = createNewFile;
+$('nf-overlay').onclick = (e) => { if (e.target === $('nf-overlay')) closeNewFile(); };
+$('nf-name').addEventListener('keydown', e => { if (e.key === 'Enter') createNewFile(); });
 $('btn-upload').onclick = () => activeDevice && $('file-input').click();
 $('file-input').onchange = (e) => { if (e.target.files.length) uploadFiles(e.target.files); e.target.value = ''; };
 $('v-close').onclick = closeViewer;
 $('v-save').onclick = saveViewer;
 $('v-download').onclick = () => viewing && downloadFile(viewing);
 $('overlay').onclick = (e) => { if (e.target === $('overlay')) closeViewer(); };
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('overlay').classList.contains('show')) closeViewer(); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if ($('overlay').classList.contains('show')) closeViewer();
+  if ($('nf-overlay').classList.contains('show')) closeNewFile();
+  if ($('set-overlay').classList.contains('show')) closeSettings();
+});
 
 // drag & drop upload
 const listing = $('listing');

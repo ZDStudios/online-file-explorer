@@ -100,6 +100,34 @@ tr.row:hover .rowacts { opacity: 1; }
 .gate .err { color: var(--bad); font-size: 13px; margin-top: 12px; min-height: 18px; }
 .muted { color: var(--muted); }
 
+/* ---- settings ---- */
+.set-group { margin-bottom: 24px; }
+.set-group:last-child { margin-bottom: 0; }
+.set-h { font-size: 11px; text-transform: uppercase; letter-spacing: .7px; color: var(--muted); margin-bottom: 10px; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 7px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; border-right: 1px solid var(--rule); background: var(--panel); }
+.seg button:last-child { border-right: 0; }
+.seg button.on { background: var(--accent); color: var(--accent-ink); }
+.set-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.dl-btn { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border: 1px solid var(--rule); border-radius: 10px; text-decoration: none; color: var(--ink); transition: border-color .15s, background .15s, transform .08s; }
+.dl-btn:hover { background: var(--hover); border-color: var(--accent); }
+.dl-btn:active { transform: translateY(1px); }
+.dl-btn .ico { font-size: 24px; color: var(--accent); }
+.dl-btn span { line-height: 1.35; }
+.dl-btn em { font-style: normal; color: var(--muted); font-family: var(--mono); font-size: 11px; }
+
+/* ---- new-file dialog ---- */
+.nf-types { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 18px; }
+.nf-type { position: relative; display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--rule); border-radius: 8px; cursor: pointer; transition: border-color .15s, background .15s, transform .08s; }
+.nf-type:hover { background: var(--hover); }
+.nf-type:has(input:checked) { border-color: var(--accent); background: var(--sel); }
+.nf-type input { position: absolute; opacity: 0; pointer-events: none; }
+.nf-type .ico { font-size: 22px; }
+.nf-type span { font-size: 13px; line-height: 1.3; }
+.nf-type em { color: var(--muted); font-style: normal; font-family: var(--mono); font-size: 11px; }
+.nf-label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 6px; }
+#nf-name { margin-bottom: 16px; }
+
 /* ---- corner status beacon ---- */
 .beacon {
   position: fixed; bottom: 16px; left: 16px; z-index: 90;

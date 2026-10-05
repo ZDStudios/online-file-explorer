@@ -44,7 +44,7 @@
     <div class="brand"><span class="mark"></span><h1>Orbit</h1><span class="tag">file explorer</span></div>
     <div class="spacer"></div>
     <div class="status"><span class="dot" id="conn-dot"></span><span id="conn-txt">connecting…</span></div>
-    <button id="btn-theme" title="Toggle theme">◑</button>
+    <button id="btn-settings" title="Settings">⚙ Settings</button>
     <button id="btn-logout">Disconnect</button>
   </header>
 
@@ -59,6 +59,7 @@
       <button id="btn-up" title="Parent folder">↑ Up</button>
       <div class="crumbs" id="crumbs"></div>
       <button id="btn-refresh" title="Refresh">⟳</button>
+      <button id="btn-newfile">New file</button>
       <button id="btn-mkdir">New folder</button>
       <button class="primary" id="btn-upload">Upload</button>
       <input type="file" id="file-input" multiple style="display:none">
@@ -82,6 +83,62 @@
       <div class="spacer"></div>
       <button id="v-download">Download</button>
       <button class="primary" id="v-save" style="display:none">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="set-overlay">
+  <div class="sheet" style="width:min(560px,100%)">
+    <div class="sheet-h"><span class="ttl">⚙ Settings</span><button id="set-close">Close</button></div>
+    <div class="sheet-b" style="padding:20px">
+      <div class="set-group">
+        <div class="set-h">Theme</div>
+        <div class="seg" id="set-theme">
+          <button data-theme="light">Light</button>
+          <button data-theme="dark">Dark</button>
+          <button data-theme="system">System</button>
+        </div>
+      </div>
+
+      <div class="set-group">
+        <div class="set-h">Server URL</div>
+        <input id="set-relay" autocomplete="off" style="width:100%">
+        <div class="set-row">
+          <span class="muted" id="set-relay-note"></span>
+          <div class="spacer"></div>
+          <button id="set-relay-reset">Reset to default</button>
+          <button class="primary" id="set-relay-save">Save &amp; reconnect</button>
+        </div>
+      </div>
+
+      <div class="set-group">
+        <div class="set-h">Desktop agent</div>
+        <p class="muted" style="margin:0 0 12px">Install this on a computer to make its files available here.</p>
+        <a class="dl-btn" id="set-download" href="https://github.com/ZDStudios/online-file-explorer/releases/download/v1.0.0/orbit-agent-auto.exe">
+          <span class="ico">⬇</span><span>Download agent for Windows<br><em>orbit-agent-auto.exe · ready to run</em></span>
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="nf-overlay">
+  <div class="sheet" style="width:min(560px,100%)">
+    <div class="sheet-h"><span class="ttl">New file</span><button id="nf-cancel">Cancel</button></div>
+    <div class="sheet-b" style="padding:18px">
+      <div class="nf-types" id="nf-types">
+        <label class="nf-type"><input type="radio" name="nf-type" value="txt" checked><span class="ico">📄</span><span>Text<br><em>.txt</em></span></label>
+        <label class="nf-type"><input type="radio" name="nf-type" value="docx"><span class="ico">📘</span><span>Word<br><em>.docx</em></span></label>
+        <label class="nf-type"><input type="radio" name="nf-type" value="pdf"><span class="ico">📕</span><span>PDF<br><em>.pdf</em></span></label>
+      </div>
+      <label class="nf-label">File name</label>
+      <input id="nf-name" placeholder="untitled" autocomplete="off" style="width:100%">
+      <label class="nf-label">Initial content <span class="muted">(optional)</span></label>
+      <textarea id="nf-content" placeholder="Start typing…" spellcheck="false" style="width:100%;height:160px;border:1px solid var(--rule);border-radius:6px;background:var(--bg);color:var(--ink);font:13px/1.6 var(--mono);padding:12px;resize:vertical;outline:none"></textarea>
+    </div>
+    <div class="sheet-f">
+      <span class="muted" id="nf-note"></span><div class="spacer"></div>
+      <button class="primary" id="nf-create">Create file</button>
     </div>
   </div>
 </div>
