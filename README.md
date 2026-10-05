@@ -1,4 +1,4 @@
-# Orbi
+# Orbit
 
 A web file explorer for your own computers. Browse, view, edit, upload, download,
 and delete files on any machine running the Orbit agent — all from a web page,
