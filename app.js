@@ -6,9 +6,9 @@
 const $ = (id) => document.getElementById(id);
 const LS = { relay: 'orbit.relay', token: 'orbit.token', theme: 'orbit.theme' };
 
-// Preconfigured relay + password: the app connects with no setup.
+// Relay is preconfigured so visitors only type the password. The password is
+// NEVER baked in — it must be entered and is verified by the server.
 const DEFAULT_RELAY = 'https://orbit-relay-c72o.onrender.com';
-const DEFAULT_TOKEN = 'Orbit123!';
 
 let ws = null;
 let reqSeq = 0;
@@ -495,9 +495,14 @@ function parentOf(p) {
 (function boot() {
   beacon('offline', 'offline');
   const relay = localStorage.getItem(LS.relay) || DEFAULT_RELAY;
-  const token = localStorage.getItem(LS.token) || DEFAULT_TOKEN;
+  const token = localStorage.getItem(LS.token) || '';   // never prefilled with a default
   $('g-relay').value = relay;
-  $('g-token').value = token;
-  if (relay && token) startApp(relay, token);
-  else { showForm(''); setTimeout(() => $('g-relay').focus(), 100); }
+  if (token) {
+    // Returning visitor on this browser — reconnect with the saved password.
+    startApp(relay, token);
+  } else {
+    // New visitor must enter the password; the server verifies it.
+    showForm('');
+    setTimeout(() => $('g-token').focus(), 100);
+  }
 })();
