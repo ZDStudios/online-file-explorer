@@ -80,6 +80,32 @@ You can:
 
 ---
 
+## Background running & auto-start (Windows)
+
+The packaged `.exe` builds run **hidden in the background** — no console window —
+and add themselves to your **Startup** folder
+(`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Orbit Agent.vbs`) so
+they relaunch automatically every time you log in. The entry is rewritten on
+each run, so it always points at the exe's current location.
+
+- **Battery:** the agent runs at below-normal priority and sits idle (just a kept-
+  alive WebSocket) when nothing is happening, so its battery impact is negligible.
+- **Sleep / closing the lid:** Windows suspends every program while the machine
+  sleeps, so files can't be served during true sleep — but the agent isn't
+  killed. The moment the laptop wakes, it resumes and reconnects on its own.
+  (Orbit deliberately does **not** force the machine to stay awake, because that
+  would drain the battery. If you want 24/7 access with the lid closed, set
+  Windows → Power → "When I close the lid" to *Do nothing* while plugged in.)
+
+Manage it:
+
+```bat
+orbit-agent-auto.exe --no-startup   REM run once without installing auto-start
+orbit-agent-auto.exe --uninstall    REM remove the Startup entry
+```
+
+To stop the running agent, end `orbit-agent-auto.exe` in Task Manager.
+
 ## Security notes
 
 - The agent grants **full read/write** to whatever root you choose. Only run it

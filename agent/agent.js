@@ -20,6 +20,7 @@ const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
 const os = require('os');
+const { spawn } = require('child_process');
 const WebSocket = require('ws');
 
 // ---- configuration ---------------------------------------------------------
@@ -74,7 +75,64 @@ async function interactiveSetup(cfg) {
 
 let cfg = loadConfig();
 
+// ---- background running + auto-start (Windows, packaged .exe only) ---------
+
+const IS_WIN = process.platform === 'win32';
+const IS_EXE = !!process.pkg;
+
+function startupVbsPath() {
+  const dir = path.join(
+    process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'),
+    'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup'
+  );
+  return path.join(dir, 'Orbit Agent.vbs');
+}
+
+// Drop a tiny launcher in the Startup folder so the agent auto-starts at login,
+// hidden (window style 0) and detached. Rewritten every run so it always points
+// at the current .exe location. Honours --no-startup / ORBIT_NO_STARTUP.
+function installStartup() {
+  if (!IS_WIN || !IS_EXE) return;
+  if (process.argv.includes('--no-startup') || process.env.ORBIT_NO_STARTUP) return;
+  try {
+    const exe = process.execPath.replace(/"/g, '');
+    const vbs =
+      'Set s = CreateObject("WScript.Shell")\r\n' +
+      's.Run """" & "' + exe + '" & """", 0, False\r\n';
+    const p = startupVbsPath();
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, vbs);
+  } catch (e) {
+    console.error('[agent] could not install startup entry: ' + e.message);
+  }
+}
+
+// Relaunch ourselves detached with no window, then let the launcher exit. This
+// keeps the agent running with no console in the background.
+function relaunchHidden() {
+  const child = spawn(process.execPath, process.argv.slice(2), {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
+    env: Object.assign({}, process.env, { ORBIT_BG: '1' }),
+  });
+  child.unref();
+}
+
+// Lowest practical impact: below-normal priority so the OS parks us when idle,
+// which keeps battery drain negligible.
+function goEasyOnBattery() {
+  try { os.setPriority(process.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {}
+}
+
 async function main() {
+  // Remove the auto-start entry and exit.
+  if (process.argv.includes('--uninstall')) {
+    try { fs.unlinkSync(startupVbsPath()); console.log('Removed Orbit from startup.'); }
+    catch { console.log('No startup entry found.'); }
+    return;
+  }
+
   if (!cfg.relay || !cfg.token || process.argv.includes('--setup')) {
     if (!process.stdin.isTTY) {
       console.error('Orbit agent is not configured. Set ORBIT_RELAY and ORBIT_TOKEN, or run with --setup.');
@@ -83,6 +141,17 @@ async function main() {
     cfg = await interactiveSetup(cfg);
     if (!cfg.relay || !cfg.token) { console.error('Relay URL and token are required.'); process.exit(1); }
   }
+
+  // Foreground launch (double-click or login): register auto-start, then hand
+  // off to a hidden background copy and exit so no window lingers.
+  if (IS_WIN && IS_EXE && !process.env.ORBIT_BG) {
+    installStartup();
+    relaunchHidden();
+    return;
+  }
+
+  if (process.env.ORBIT_BG) goEasyOnBattery();
+
   ROOTS = resolveRoots();
   connect();
 }
