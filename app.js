@@ -210,6 +210,8 @@ function renderDevices() {
     box.appendChild(el);
   });
   if (activeDevice && !devices.find(d => d.id === activeDevice)) { activeDevice = null; showPlaceholder('That device went offline.'); }
+  // A single online device is unambiguous — select it automatically.
+  if (inApp && !activeDevice && devices.length === 1) selectDevice(devices[0].id);
 }
 function since(ts) {
   const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
