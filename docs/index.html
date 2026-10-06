@@ -66,6 +66,7 @@
       <button id="btn-mkdir">New folder</button>
       <button class="primary" id="btn-upload">Upload</button>
       <input type="file" id="file-input" multiple style="display:none">
+      <button class="danger" id="btn-remove" title="Uninstall the agent from this device">Remove from device</button>
     </div>
     <div class="listing" id="listing">
       <div class="placeholder"><div class="big">No device selected</div><div>Pick a device on the left to browse its files.</div></div>
@@ -86,6 +87,22 @@
       <div class="spacer"></div>
       <button id="v-download">Download</button>
       <button class="primary" id="v-save" style="display:none">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="rm-overlay">
+  <div class="sheet" style="width:min(480px,100%)">
+    <div class="sheet-h"><span class="ttl">Remove from device</span><button id="rm-close">Cancel</button></div>
+    <div class="sheet-b" style="padding:20px">
+      <p style="margin:0 0 6px">This uninstalls the Orbit agent from <strong id="rm-name">this device</strong>.</p>
+      <p class="muted" style="margin:0 0 18px">It removes the Startup entry, deletes the saved config, and deletes the agent program on that computer, then disconnects. Your personal files are not touched. This can't be undone remotely — you'd have to run the agent again to reconnect.</p>
+      <label class="nf-label">Enter the password to confirm</label>
+      <input id="rm-pass" type="password" placeholder="••••••••" autocomplete="off" style="width:100%">
+    </div>
+    <div class="sheet-f">
+      <span class="muted" id="rm-note"></span><div class="spacer"></div>
+      <button class="danger" id="rm-confirm">Remove device</button>
     </div>
   </div>
 </div>

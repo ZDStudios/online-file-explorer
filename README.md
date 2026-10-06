@@ -97,14 +97,18 @@ each run, so it always points at the exe's current location.
   would drain the battery. If you want 24/7 access with the lid closed, set
   Windows → Power → "When I close the lid" to *Do nothing* while plugged in.)
 
-Manage it:
+Run once without installing auto-start:
 
 ```bat
-orbit-agent-auto.exe --no-startup   REM run once without installing auto-start
-orbit-agent-auto.exe --uninstall    REM remove the Startup entry
+orbit-agent-auto.exe --no-startup
 ```
 
 To stop the running agent, end `orbit-agent-auto.exe` in Task Manager.
+
+**Remove it remotely:** in the web client, select the device and click
+**Remove from device**. After a confirmation and re-entering the password, the
+agent uninstalls itself on that computer — it removes its Startup entry, deletes
+its saved config, and deletes its own `.exe`, then exits.
 
 ## Security notes
 

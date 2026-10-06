@@ -25,6 +25,8 @@ button { background: var(--panel); border: 1px solid var(--rule); border-radius:
 button:hover { background: var(--hover); }
 button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
 button.primary:hover { filter: brightness(1.08); }
+button.danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, var(--rule)); }
+button.danger:hover { background: color-mix(in srgb, var(--bad) 14%, var(--panel)); }
 button:disabled { opacity: .45; cursor: default; }
 input, select { background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; padding: 6px 10px; }
 a { color: var(--accent); }

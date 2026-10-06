@@ -592,6 +592,37 @@ function openSettings() {
   $('set-overlay').classList.add('show');
 }
 function closeSettings() { $('set-overlay').classList.remove('show'); }
+// remove (remote uninstall) a device
+function deviceName(id) { const d = devices.find(x => x.id === id); return d ? d.name : 'this device'; }
+function openRemove() {
+  if (!activeDevice) { toast('Pick a device first.', 'bad'); return; }
+  $('rm-name').textContent = deviceName(activeDevice);
+  $('rm-pass').value = ''; $('rm-note').textContent = '';
+  $('rm-overlay').classList.add('show');
+  setTimeout(() => $('rm-pass').focus(), 50);
+}
+function closeRemove() { $('rm-overlay').classList.remove('show'); }
+async function confirmRemove() {
+  const password = $('rm-pass').value;
+  if (!password) { $('rm-note').textContent = 'Enter the password to confirm.'; return; }
+  const id = activeDevice; const name = deviceName(id);
+  $('rm-note').textContent = 'Removing…';
+  try {
+    await rpc('uninstall', { password }, 15000);
+    closeRemove();
+    toast('Removed Orbit from ' + name, 'ok');
+    activeDevice = null;
+    showPlaceholder('Device removed', 'The agent has uninstalled itself from ' + name + '.');
+  } catch (e) {
+    $('rm-note').textContent = /password/i.test(e.message) ? 'Incorrect password.' : ('Failed: ' + e.message);
+  }
+}
+$('btn-remove').onclick = openRemove;
+$('rm-close').onclick = closeRemove;
+$('rm-confirm').onclick = confirmRemove;
+$('rm-overlay').onclick = (e) => { if (e.target === $('rm-overlay')) closeRemove(); };
+$('rm-pass').addEventListener('keydown', e => { if (e.key === 'Enter') confirmRemove(); });
+
 $('btn-settings').onclick = openSettings;
 $('set-close').onclick = closeSettings;
 $('set-overlay').onclick = (e) => { if (e.target === $('set-overlay')) closeSettings(); };
@@ -652,6 +683,7 @@ document.addEventListener('keydown', e => {
   if ($('overlay').classList.contains('show')) closeViewer();
   if ($('nf-overlay').classList.contains('show')) closeNewFile();
   if ($('set-overlay').classList.contains('show')) closeSettings();
+  if ($('rm-overlay').classList.contains('show')) closeRemove();
 });
 
 // drag & drop upload

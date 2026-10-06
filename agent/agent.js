@@ -125,14 +125,24 @@ function goEasyOnBattery() {
   try { os.setPriority(process.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {}
 }
 
-async function main() {
-  // Remove the auto-start entry and exit.
-  if (process.argv.includes('--uninstall')) {
-    try { fs.unlinkSync(startupVbsPath()); console.log('Removed Orbit from startup.'); }
-    catch { console.log('No startup entry found.'); }
-    return;
+// Triggered remotely from the web client: remove the Startup entry, delete the
+// saved config, and delete our own .exe, then exit. Requires the caller to prove
+// the password (the same token this agent authenticated with).
+function selfDestruct() {
+  try { fs.unlinkSync(startupVbsPath()); } catch {}
+  try { fs.unlinkSync(path.join(CONFIG_DIR, 'config.json')); } catch {}
+  if (IS_WIN && IS_EXE) {
+    try {
+      const exe = process.execPath;
+      // wait for this process to exit, then delete the exe
+      spawn('cmd', ['/c', `ping 127.0.0.1 -n 3 >nul & del /f /q "${exe}"`],
+        { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    } catch {}
   }
+  setTimeout(() => process.exit(0), 600);
+}
 
+async function main() {
   if (!cfg.relay || !cfg.token || process.argv.includes('--setup')) {
     if (!process.stdin.isTTY) {
       console.error('Orbit agent is not configured. Set ORBIT_RELAY and ORBIT_TOKEN, or run with --setup.');
@@ -289,6 +299,13 @@ async function handle(msg) {
     case 'delete': return await remove(msg.path);
     case 'mkdir':  return await mkdir(msg.path);
     case 'rename': return await rename(msg.from_path, msg.to_path);
+    case 'uninstall': {
+      if (String(msg.password || '') !== String(cfg.token)) {
+        throw Object.assign(new Error('Incorrect password.'), { code: 'E_AUTH' });
+      }
+      selfDestruct();
+      return { removed: true, name: cfg.name };
+    }
     case 'info':
       return {
         name: cfg.name,
