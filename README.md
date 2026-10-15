@@ -33,6 +33,9 @@ behind any home router. A single shared token gates every connection.
 
 > Free Render services sleep after inactivity and cold-start in ~30–60s on the
 > next connection. The agent auto-reconnects, so it comes back on its own.
+>
+> **Want it always-on and faster?** Host the relay on your own server with
+> Coolify — no cold starts. See [COOLIFY.md](COOLIFY.md).
 
 ## 2. Enable GitHub Pages
 

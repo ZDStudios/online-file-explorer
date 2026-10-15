@@ -1,0 +1,17 @@
+# Optional: deploy the relay with Coolify's "Docker Compose" build pack.
+# (The Dockerfile alone is enough; this is just an alternative.)
+services:
+  relay:
+    build: .
+    environment:
+      # Set this in Coolify's Environment tab, not here, for real deployments.
+      - AUTH_TOKEN=${AUTH_TOKEN}
+      - PORT=3000
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
