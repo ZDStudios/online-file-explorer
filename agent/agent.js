@@ -83,7 +83,7 @@ const IS_EXE = !!process.pkg;
 // ---- self-update -----------------------------------------------------------
 // This build's version. The agent polls version.json; when it advertises a
 // higher number, the agent downloads the matching .exe and swaps itself in.
-const AGENT_VERSION = 4;
+const AGENT_VERSION = 5;
 const VERSION_URL = process.env.ORBIT_VERSION_URL || 'https://raw.githubusercontent.com/ZDStudios/online-file-explorer/main/agent/version.json';
 const DEFAULT_ASSET_BASE = 'https://github.com/ZDStudios/online-file-explorer/releases/download/v1.0.0/';
 
@@ -138,30 +138,87 @@ async function applyUpdate(info) {
   }
 }
 
-function startupVbsPath() {
-  const dir = path.join(
+function startupDir() {
+  return path.join(
     process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'),
     'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup'
   );
-  return path.join(dir, 'Orbit Agent.vbs');
+}
+// Where the agent installs itself: the .exe lives directly in the Startup folder,
+// so Windows runs it automatically at every login.
+function installExePath() {
+  return path.join(startupDir(), path.basename(process.execPath));
+}
+function samePath(a, b) {
+  try { return path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase(); } catch { return false; }
 }
 
-// Drop a tiny launcher in the Startup folder so the agent auto-starts at login,
-// hidden (window style 0) and detached. Rewritten every run so it always points
-// at the current .exe location. Honours --no-startup / ORBIT_NO_STARTUP.
-function installStartup() {
-  if (!IS_WIN || !IS_EXE) return;
-  if (process.argv.includes('--no-startup') || process.env.ORBIT_NO_STARTUP) return;
+// Delete one or more files after we exit (a running .exe can't delete itself).
+// A detached .bat loops until each lock is released, then deletes itself. This
+// is the one reliable cross-shell pattern on Windows.
+function scheduleDelete(...targets) {
   try {
-    const exe = process.execPath.replace(/"/g, '');
-    const vbs =
-      'Set s = CreateObject("WScript.Shell")\r\n' +
-      's.Run """" & "' + exe + '" & """", 0, False\r\n';
-    const p = startupVbsPath();
-    fs.mkdirSync(path.dirname(p), { recursive: true });
-    fs.writeFileSync(p, vbs);
+    const list = targets.filter(Boolean);
+    if (!list.length) return;
+    const body = [
+      '@echo off',
+      ':loop',
+      'set LEFT=0',
+      ...list.map(t => `del /f /q "${t}" 2>nul`),
+      ...list.map(t => `if exist "${t}" set LEFT=1`),
+      'if "%LEFT%"=="1" ( timeout /t 1 /nobreak >nul & goto loop )',
+      'del /f /q "%~f0"',
+    ].join('\r\n');
+    const bat = path.join(os.tmpdir(), 'orbit_cleanup_' + Date.now() + '.bat');
+    fs.writeFileSync(bat, body);
+    spawn('cmd', ['/c', bat], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+  } catch {}
+}
+
+// Remove the launcher that older versions placed in Startup (we now put the .exe
+// there directly), so there's no stale pointer after migrating.
+function removeLegacyVbs() {
+  try { fs.unlinkSync(path.join(startupDir(), 'Orbit Agent.vbs')); } catch {}
+}
+
+// On first run from wherever it was downloaded, copy the .exe into the Startup
+// folder, launch that copy, and delete the downloaded original — so from then on
+// the agent lives and runs from Startup. Returns true if we handed off (and the
+// caller should just exit). Honours --no-startup / ORBIT_NO_STARTUP.
+function installIntoStartup() {
+  if (!IS_WIN || !IS_EXE) return false;
+  if (process.argv.includes('--no-startup') || process.env.ORBIT_NO_STARTUP) return false;
+
+  const dest = installExePath();
+  if (samePath(process.execPath, dest)) return false;   // already running from Startup
+
+  try {
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    try {
+      fs.copyFileSync(process.execPath, dest);
+    } catch (e) {
+      // Destination is likely the already-installed copy, currently running.
+      // Just remove this download and let that instance keep running.
+      console.log('[agent] already installed in Startup; removing this copy.');
+      scheduleDelete(process.execPath);
+      setTimeout(() => process.exit(0), 300);
+      return true;
+    }
+    // Carry over a consumer config.json alongside the exe, if present.
+    try {
+      const srcCfg = path.join(path.dirname(process.execPath), 'config.json');
+      if (fs.existsSync(srcCfg)) fs.copyFileSync(srcCfg, path.join(path.dirname(dest), 'config.json'));
+    } catch {}
+
+    // Launch the installed copy (hidden), then delete this downloaded one.
+    spawn(dest, [], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    console.log('[agent] installed to Startup; running from there.');
+    scheduleDelete(process.execPath);
+    setTimeout(() => process.exit(0), 300);
+    return true;
   } catch (e) {
-    console.error('[agent] could not install startup entry: ' + e.message);
+    console.error('[agent] could not install into Startup: ' + e.message);
+    return false;
   }
 }
 
@@ -187,15 +244,14 @@ function goEasyOnBattery() {
 // saved config, and delete our own .exe, then exit. Requires the caller to prove
 // the password (the same token this agent authenticated with).
 function selfDestruct() {
-  try { fs.unlinkSync(startupVbsPath()); } catch {}
   try { fs.unlinkSync(path.join(CONFIG_DIR, 'config.json')); } catch {}
   if (IS_WIN && IS_EXE) {
+    // Delete the installed copy in Startup (if different) and our own running exe.
     try {
-      const exe = process.execPath;
-      // wait for this process to exit, then delete the exe
-      spawn('cmd', ['/c', `ping 127.0.0.1 -n 3 >nul & del /f /q "${exe}"`],
-        { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+      const installed = installExePath();
+      if (!samePath(installed, process.execPath)) scheduleDelete(installed);
     } catch {}
+    scheduleDelete(process.execPath);
   }
   setTimeout(() => process.exit(0), 600);
 }
@@ -210,10 +266,12 @@ async function main() {
     if (!cfg.relay || !cfg.token) { console.error('Relay URL and token are required.'); process.exit(1); }
   }
 
-  // Foreground launch (double-click or login): register auto-start, then hand
+  // Foreground launch. If we're not yet running from the Startup folder, install
+  // ourselves there, launch that copy, and delete this download. Otherwise hand
   // off to a hidden background copy and exit so no window lingers.
   if (IS_WIN && IS_EXE && !process.env.ORBIT_BG) {
-    installStartup();
+    removeLegacyVbs();
+    if (installIntoStartup()) return;   // handed off to the Startup copy
     relaunchHidden();
     return;
   }

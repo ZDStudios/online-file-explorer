@@ -79,11 +79,12 @@ You can:
 
 ## Background running & auto-start (Windows)
 
-The packaged `.exe` builds run **hidden in the background** — no console window —
-and add themselves to your **Startup** folder
-(`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Orbit Agent.vbs`) so
-they relaunch automatically every time you log in. The entry is rewritten on
-each run, so it always points at the exe's current location.
+When you run the packaged `.exe` (e.g. from your Downloads), it **installs itself
+into your Startup folder** and runs from there:
+`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\orbit-agent-auto.exe`.
+It copies itself into Startup, launches that copy **hidden in the background**
+(no console window), and **deletes the one you downloaded**. From then on Windows
+starts it automatically at every login, and it keeps itself there across updates.
 
 - **Battery:** the agent runs at below-normal priority and sits idle (just a kept-
   alive WebSocket) when nothing is happening, so its battery impact is negligible.
