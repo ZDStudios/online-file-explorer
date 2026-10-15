@@ -97,9 +97,11 @@ wss.on('connection', (ws, req) => {
     const key = inst ? 'i:' + inst : 'n:' + name + '|' + platform;
 
     // Drop any stale connection for the same device so it never shows twice.
+    // Mark it replaced so its close handler stays quiet (no device-list churn).
     for (const [oldId, a] of agents) {
       if (a.key === key) {
         console.log(`[relay] replacing stale agent: ${a.name} (${oldId})`);
+        a.ws.__replaced = true;
         try { a.ws.close(4001, 'replaced'); } catch {}
         agents.delete(oldId);
       }
@@ -124,6 +126,7 @@ wss.on('connection', (ws, req) => {
 
     ws.on('close', () => {
       agents.delete(id);
+      if (ws.__replaced) return;   // superseded by a newer connection; don't flap the UI
       console.log(`[relay] agent disconnected: ${name}`);
       broadcastDevices();
     });

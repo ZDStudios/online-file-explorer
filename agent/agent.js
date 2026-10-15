@@ -83,7 +83,7 @@ const IS_EXE = !!process.pkg;
 // ---- self-update -----------------------------------------------------------
 // This build's version. The agent polls version.json; when it advertises a
 // higher number, the agent downloads the matching .exe and swaps itself in.
-const AGENT_VERSION = 3;
+const AGENT_VERSION = 4;
 const VERSION_URL = process.env.ORBIT_VERSION_URL || 'https://raw.githubusercontent.com/ZDStudios/online-file-explorer/main/agent/version.json';
 const DEFAULT_ASSET_BASE = 'https://github.com/ZDStudios/online-file-explorer/releases/download/v1.0.0/';
 
@@ -434,7 +434,14 @@ function connect() {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(reply));
   });
 
-  ws.on('close', () => {
+  ws.on('close', (code) => {
+    // 4001 = the relay replaced us with another connection from this same
+    // device. Reconnecting would just evict that one and flap forever, so this
+    // (duplicate) process bows out and lets the newest connection stay.
+    if (code === 4001) {
+      console.log('[agent] replaced by a newer instance; exiting.');
+      process.exit(0);
+    }
     console.log(`[agent] disconnected. Reconnecting in ${reconnectDelay / 1000}s...`);
     setTimeout(connect, reconnectDelay);
     reconnectDelay = Math.min(reconnectDelay * 2, 30000);
