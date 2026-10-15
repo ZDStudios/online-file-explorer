@@ -92,7 +92,20 @@ wss.on('connection', (ws, req) => {
     const id = crypto.randomUUID();
     const name = (params.get('name') || 'Unnamed device').slice(0, 64);
     const platform = (params.get('platform') || 'unknown').slice(0, 32);
-    agents.set(id, { ws, name, platform, connectedAt: Date.now() });
+    const inst = (params.get('inst') || '').slice(0, 64);
+    // Identity for de-duplication: prefer a stable instance id, else name+platform.
+    const key = inst ? 'i:' + inst : 'n:' + name + '|' + platform;
+
+    // Drop any stale connection for the same device so it never shows twice.
+    for (const [oldId, a] of agents) {
+      if (a.key === key) {
+        console.log(`[relay] replacing stale agent: ${a.name} (${oldId})`);
+        try { a.ws.close(4001, 'replaced'); } catch {}
+        agents.delete(oldId);
+      }
+    }
+
+    agents.set(id, { ws, name, platform, key, connectedAt: Date.now() });
     ws.__role = 'agent';
     ws.__id = id;
     console.log(`[relay] agent connected: ${name} (${id})`);

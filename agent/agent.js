@@ -324,12 +324,24 @@ async function handle(msg) {
 let ws = null;
 let reconnectDelay = 1000;
 
+// A stable per-install id so the relay can replace a stale connection from this
+// same agent instead of showing the device twice.
+function instanceId() {
+  const f = path.join(CONFIG_DIR, '.orbit-id');
+  try { const v = fs.readFileSync(f, 'utf8').trim(); if (v) return v; } catch {}
+  const id = (require('crypto').randomUUID && require('crypto').randomUUID()) ||
+             (Date.now().toString(36) + Math.random().toString(36).slice(2));
+  try { fs.writeFileSync(f, id); } catch {}
+  return id;
+}
+
 function connect() {
   const u = new URL(cfg.relay);
   u.searchParams.set('role', 'agent');
   u.searchParams.set('token', cfg.token);
   u.searchParams.set('name', cfg.name);
   u.searchParams.set('platform', process.platform);
+  u.searchParams.set('inst', instanceId());
 
   console.log(`[agent] connecting to ${u.origin} as "${cfg.name}"...`);
   ws = new WebSocket(u.toString());
