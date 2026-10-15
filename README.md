@@ -7,35 +7,29 @@ from anywhere.
 Three pieces:
 
 - **Web client** (`docs/`) — static HTML/CSS/JS, hosted free on **GitHub Pages**.
-- **Relay** (`server/`) — a tiny WebSocket broker, hosted free on **Render**.
+- **Relay** (`server/`) — a tiny WebSocket broker, hosted on **Coolify** (your
+  own always-on server) at `https://orbit.zdstudios.network`.
 - **Agent** (`agent/`) — a small program you run on each computer you want to reach.
 
 ```
-  Browser (GitHub Pages)  <--ws-->  Relay (Render)  <--ws-->  Agent (your PC)
+  Browser (GitHub Pages)  <--wss-->  Relay (Coolify)  <--wss-->  Agent (your PC)
 ```
 
 The browser never connects to your computer directly. Both the browser and the
 agent dial **out** to the relay, so there are no ports to open and it works
-behind any home router. A single shared token gates every connection.
+behind any home router. A single shared password gates every connection.
 
 ---
 
-## 1. Deploy the relay to Render (free)
+## 1. Deploy the relay (Coolify)
 
-1. Fork/clone this repo to your GitHub (already done if you're reading this there).
-2. In the [Render dashboard](https://dashboard.render.com) → **New → Blueprint**,
-   point it at this repo. Render reads `render.yaml` and creates the
-   `orbit-relay` web service on the free plan.
-3. Render generates an `AUTH_TOKEN` automatically. Open the service →
-   **Environment** and copy its value — you'll need it for the web client and the
-   agent.
-4. Note the service URL, e.g. `https://orbit-relay.onrender.com`.
+The relay is containerized (`server/Dockerfile`) and runs on Coolify — always on,
+no cold starts. Full steps are in **[COOLIFY.md](COOLIFY.md)**; in short: point a
+Coolify app at this repo (Build pack **Dockerfile**, base directory **`/server`**,
+port **3000**), set `AUTH_TOKEN`, give it a domain, and deploy. Any Docker host
+works too.
 
-> Free Render services sleep after inactivity and cold-start in ~30–60s on the
-> next connection. The agent auto-reconnects, so it comes back on its own.
->
-> **Want it always-on and faster?** Host the relay on your own server with
-> Coolify — no cold starts. See [COOLIFY.md](COOLIFY.md).
+> It can also run on any Docker host or anywhere that takes a Node app — the relay has no host-specific code.
 
 ## 2. Enable GitHub Pages
 
@@ -132,7 +126,7 @@ exes to the release. Agents pick it up within 30 minutes.
 
 - The agent grants **full read/write** to whatever root you choose. Only run it
   on machines you own, and keep the token secret.
-- Everything is end-to-end over TLS (`wss://`) once Render is in front.
+- Everything is end-to-end over TLS (`wss://`) via the relay's HTTPS host.
 - To limit exposure, set a restricted folder during `--setup` (or `ORBIT_ROOT`).
 
 ## Building the agent .exe yourself

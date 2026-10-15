@@ -911,7 +911,10 @@ function parentOf(p) {
 // prefill + auto-connect if we have saved creds
 (function boot() {
   beacon('offline', 'offline');
-  const relay = localStorage.getItem(LS.relay) || DEFAULT_RELAY;
+  // Migrate anyone still saved on the retired Render relay to the current default.
+  let saved = localStorage.getItem(LS.relay) || '';
+  if (/onrender\.com/i.test(saved)) { saved = ''; localStorage.removeItem(LS.relay); }
+  const relay = saved || DEFAULT_RELAY;
   const token = localStorage.getItem(LS.token) || '';   // never prefilled with a default
   $('g-relay').value = relay;
   if (token) {

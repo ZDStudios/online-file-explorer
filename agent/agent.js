@@ -10,7 +10,7 @@
  * shared AUTH_TOKEN; without it the relay refuses the socket.
  *
  * Configuration (env vars or config.json next to the executable):
- *   ORBIT_RELAY   wss://your-service.onrender.com   (required)
+ *   ORBIT_RELAY   wss://orbit.zdstudios.network   (required)
  *   ORBIT_TOKEN   shared secret                      (required)
  *   ORBIT_NAME    friendly device name               (default: hostname)
  *   ORBIT_ROOT    restrict access to this directory  (default: whole machine)
@@ -57,7 +57,7 @@ async function interactiveSetup(cfg) {
   const readline = require('readline');
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   console.log('Orbit agent setup. These answers are saved to config.json next to this program.\n');
-  let relay = await ask(rl, 'Relay URL (e.g. wss://orbit-relay.onrender.com)', cfg.relay);
+  let relay = await ask(rl, 'Relay URL (e.g. wss://orbit.zdstudios.network)', cfg.relay);
   relay = relay.replace(/^http/, 'ws');
   const token = await ask(rl, 'Access token', cfg.token);
   const name = await ask(rl, 'Device name', cfg.name);

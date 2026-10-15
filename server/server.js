@@ -10,7 +10,7 @@
  * A single shared AUTH_TOKEN gates every connection, so only clients that
  * know the secret can ever reach each other. The relay itself never touches
  * the filesystem; it only forwards envelopes. Designed to sit happily inside
- * the Render free tier: no persistence, tiny footprint, one process.
+ * any small host (Coolify, a VPS, Render): no persistence, tiny footprint.
  */
 
 const http = require('http');
@@ -21,7 +21,7 @@ const PORT = process.env.PORT || 10000;
 const AUTH_TOKEN = process.env.AUTH_TOKEN || '';
 
 if (!AUTH_TOKEN) {
-  console.warn('[relay] WARNING: AUTH_TOKEN is not set. Set it in the Render dashboard before exposing this service.');
+  console.warn('[relay] WARNING: AUTH_TOKEN is not set. Set it on the host before exposing this service.');
 }
 
 // agentId -> { ws, name, platform, connectedAt }
@@ -56,7 +56,7 @@ function broadcastDevices() {
   for (const ws of webs.values()) send(ws, payload);
 }
 
-// Minimal HTTP surface: health check for Render + a friendly root page.
+// Minimal HTTP surface: health check for the host + a friendly root page.
 const httpServer = http.createServer((req, res) => {
   if (req.url === '/health' || req.url === '/healthz') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -163,7 +163,7 @@ wss.on('connection', (ws, req) => {
   ws.close(1008, 'unknown role');
 });
 
-// Keep sockets alive through Render's idle proxy and prune dead ones.
+// Keep sockets alive through the host's idle proxy and prune dead ones.
 const interval = setInterval(() => {
   for (const ws of wss.clients) {
     if (ws.readyState === ws.OPEN) {
