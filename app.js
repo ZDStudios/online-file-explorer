@@ -343,8 +343,21 @@ function syncSelBar() {
   }
   const all = $('check-all');
   if (all) { all.checked = n > 0 && n === curEntries.length; all.indeterminate = n > 0 && n < curEntries.length; }
+  const sa = $('btn-selectall');
+  if (sa) sa.textContent = (curEntries.length && n === curEntries.length) ? 'Deselect all' : 'Select all';
 }
 function clearSelection() { selected.clear(); $('listing').querySelectorAll('.rowcheck').forEach(c => c.checked = false); $('listing').querySelectorAll('.cell.sel').forEach(c => c.classList.remove('sel')); syncSelBar(); }
+
+// Select (or clear) every item in the current folder — works in list and grid.
+function selectAll() {
+  if (!activeDevice || !curEntries.length) return;
+  if (selected.size >= curEntries.length) { clearSelection(); return; }
+  selected.clear();
+  for (const e of curEntries) selected.set(e.path, e);
+  $('listing').querySelectorAll('.rowcheck').forEach(c => c.checked = true);
+  $('listing').querySelectorAll('.cell').forEach(c => c.classList.add('sel'));
+  syncSelBar();
+}
 
 function isImage(e) { return e.type === 'file' && (IMG.includes(ext(e.name)) || HEIC.includes(ext(e.name))); }
 
@@ -854,6 +867,7 @@ $('path-input').addEventListener('keydown', e => {
 $('path-input').addEventListener('blur', () => setTimeout(hidePathInput, 120)); // allow Go click
 $('btn-refresh').onclick = () => activeDevice && browse(cwd);
 $('btn-view').onclick = () => setViewMode(viewMode === 'grid' ? 'list' : 'grid');
+$('btn-selectall').onclick = selectAll;
 updateViewBtn();
 $('btn-mkdir').onclick = () => activeDevice && mkdir();
 $('btn-newfile').onclick = () => activeDevice && openNewFile();
