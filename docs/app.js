@@ -8,7 +8,7 @@ const LS = { relay: 'orbit.relay', token: 'orbit.token', theme: 'orbit.theme' };
 
 // Relay is preconfigured so visitors only type the password. The password is
 // NEVER baked in — it must be entered and is verified by the server.
-const DEFAULT_RELAY = 'https://orbit-relay-c72o.onrender.com';
+const DEFAULT_RELAY = 'https://orbit.zdstudios.network';
 
 let ws = null;
 let reqSeq = 0;

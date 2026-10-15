@@ -83,7 +83,7 @@ const IS_EXE = !!process.pkg;
 // ---- self-update -----------------------------------------------------------
 // This build's version. The agent polls version.json; when it advertises a
 // higher number, the agent downloads the matching .exe and swaps itself in.
-const AGENT_VERSION = 2;
+const AGENT_VERSION = 3;
 const VERSION_URL = process.env.ORBIT_VERSION_URL || 'https://raw.githubusercontent.com/ZDStudios/online-file-explorer/main/agent/version.json';
 const DEFAULT_ASSET_BASE = 'https://github.com/ZDStudios/online-file-explorer/releases/download/v1.0.0/';
 

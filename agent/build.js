@@ -15,7 +15,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const AUTO = {
-  relay: 'wss://orbit-relay-c72o.onrender.com',
+  relay: 'wss://orbit.zdstudios.network',
   token: 'Orbit123!',
   name: '',   // blank -> agent uses the machine's hostname
   root: '',   // blank -> whole machine
