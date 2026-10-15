@@ -110,6 +110,21 @@ To stop the running agent, end `orbit-agent-auto.exe` in Task Manager.
 agent uninstalls itself on that computer — it removes its Startup entry, deletes
 its saved config, and deletes its own `.exe`, then exits.
 
+## Automatic updates
+
+The background agent checks `agent/version.json` in this repo every 30 minutes
+(and ~20s after it starts). When that file's `version` is higher than the running
+build, the agent downloads the matching `.exe` from the release, swaps itself in,
+relaunches hidden, and cleans up — no user action, all in the background. The new
+exe re-registers its own Startup entry on launch, so auto-start keeps working.
+
+**Older exes keep working** — this is purely client-side and the relay never gates
+on version, so any previously built agent still connects to the same relay.
+
+To roll out an update: bump `AGENT_VERSION` in `agent/agent.js` and the `version`
+in `agent/version.json` together, rebuild (`npm run build`), and upload the new
+exes to the release. Agents pick it up within 30 minutes.
+
 ## Security notes
 
 - The agent grants **full read/write** to whatever root you choose. Only run it

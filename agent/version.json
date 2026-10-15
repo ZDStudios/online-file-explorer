@@ -1,0 +1,5 @@
+{
+  "version": 2,
+  "base": "https://github.com/ZDStudios/online-file-explorer/releases/download/v1.0.0/",
+  "notes": "Bump `version` above the agent's AGENT_VERSION to roll out an update. Agents download the same-named .exe from `base` and swap themselves in."
+}

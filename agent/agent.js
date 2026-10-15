@@ -80,6 +80,64 @@ let cfg = loadConfig();
 const IS_WIN = process.platform === 'win32';
 const IS_EXE = !!process.pkg;
 
+// ---- self-update -----------------------------------------------------------
+// This build's version. The agent polls version.json; when it advertises a
+// higher number, the agent downloads the matching .exe and swaps itself in.
+const AGENT_VERSION = 2;
+const VERSION_URL = process.env.ORBIT_VERSION_URL || 'https://raw.githubusercontent.com/ZDStudios/online-file-explorer/main/agent/version.json';
+const DEFAULT_ASSET_BASE = 'https://github.com/ZDStudios/online-file-explorer/releases/download/v1.0.0/';
+
+let updating = false;
+
+async function checkForUpdate() {
+  if (!IS_WIN || !IS_EXE || updating) return;
+  try {
+    const res = await fetch(VERSION_URL + '?t=' + Date.now(), { cache: 'no-store', redirect: 'follow' });
+    if (!res.ok) return;
+    const info = await res.json();
+    if (!info || typeof info.version !== 'number' || info.version <= AGENT_VERSION) return;
+    console.log(`[agent] update available: v${info.version} (have v${AGENT_VERSION})`);
+    await applyUpdate(info);
+  } catch { /* offline / transient — retry on the next interval */ }
+}
+
+async function applyUpdate(info) {
+  updating = true;
+  try {
+    const exe = process.execPath;
+    const dir = path.dirname(exe);
+    const base = path.basename(exe);                 // e.g. orbit-agent-auto.exe
+    const url = (info.base || DEFAULT_ASSET_BASE) + base;
+    const res = await fetch(url, { redirect: 'follow' });
+    if (!res.ok) throw new Error('download HTTP ' + res.status);
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length < 1000000) throw new Error('downloaded file too small');
+
+    const nw = path.join(dir, base.replace(/\.exe$/i, '') + '.new.exe');
+    fs.writeFileSync(nw, buf);
+
+    // A one-shot updater: wait for us to exit, replace the exe, relaunch it
+    // (the fresh exe re-installs its own Startup entry on launch), then self-delete.
+    const bat = path.join(dir, 'orbit-update.cmd');
+    const script = [
+      '@echo off',
+      'ping 127.0.0.1 -n 3 >nul',
+      `del /f /q "${exe}"`,
+      `move /y "${nw}" "${exe}"`,
+      `start "" "${exe}"`,
+      'del /f /q "%~f0"',
+    ].join('\r\n');
+    fs.writeFileSync(bat, script);
+    spawn('cmd', ['/c', bat], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+
+    console.log('[agent] downloaded v' + info.version + ', restarting to apply...');
+    setTimeout(() => process.exit(0), 300);
+  } catch (e) {
+    updating = false;
+    console.error('[agent] update failed: ' + e.message);
+  }
+}
+
 function startupVbsPath() {
   const dir = path.join(
     process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'),
@@ -164,6 +222,12 @@ async function main() {
 
   ROOTS = resolveRoots();
   connect();
+
+  // Background copy watches GitHub for a newer build and self-updates.
+  if (IS_WIN && IS_EXE && process.env.ORBIT_BG) {
+    setTimeout(checkForUpdate, 20000);                 // soon after startup
+    setInterval(checkForUpdate, 30 * 60 * 1000);       // then every 30 minutes
+  }
 }
 
 const MAX_BYTES = 64 * 1024 * 1024; // 64 MB cap per transfer
