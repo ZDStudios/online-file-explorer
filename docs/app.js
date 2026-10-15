@@ -18,6 +18,7 @@ let activeDevice = null;
 let cwd = '';
 let curEntries = [];
 let navHistory = [];   // folders visited, for the Back button
+let selected = new Map();   // path -> entry, for multi-select download
 
 // connection lifecycle
 let creds = { relay: '', token: '' };
@@ -254,6 +255,7 @@ async function browse(p) {
     const r = await rpc('list', { path: p });
     cwd = r.path || '';
     curEntries = r.entries || [];
+    selected.clear();
     renderListing(r);
   } catch (e) {
     showPlaceholder('Could not open folder', e.message);
@@ -287,7 +289,9 @@ function renderListing(r) {
     const icon = e.type === 'dir' ? '📁' : iconFor(e.name);
     const size = e.type === 'dir' ? '—' : fmtSize(e.size);
     const when = e.mtime ? fmtDate(e.mtime) : '';
+    const checked = selected.has(e.path) ? 'checked' : '';
     return `<tr class="row" data-i="${i}" style="animation-delay:${Math.min(i * 18, 400)}ms">
+      <td class="cbcell"><input type="checkbox" class="rowcheck" ${checked}></td>
       <td><div class="fname"><span class="ico">${icon}</span><span>${esc(e.name)}</span></div></td>
       <td class="size">${size}</td>
       <td class="mtime">${when}</td>
@@ -297,16 +301,40 @@ function renderListing(r) {
         <button data-act="del">Delete</button>
       </div></td></tr>`;
   }).join('');
-  $('listing').innerHTML = `<table><thead><tr><th>Name</th><th>Size</th><th>Modified</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  $('listing').innerHTML = `<table><thead><tr>
+      <th class="cbcell"><input type="checkbox" id="check-all" title="Select all"></th>
+      <th>Name</th><th>Size</th><th>Modified</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
   $('listing').querySelectorAll('tr.row').forEach(tr => {
     const e = entries[+tr.dataset.i];
     tr.querySelector('.fname').onclick = () => e.type === 'dir' ? navTo(e.path) : openFile(e);
+    const cb = tr.querySelector('.rowcheck');
+    cb.onclick = (ev) => ev.stopPropagation();
+    cb.onchange = () => { if (cb.checked) selected.set(e.path, e); else selected.delete(e.path); syncSelBar(); };
     tr.querySelectorAll('[data-act]').forEach(b => {
       b.onclick = (ev) => { ev.stopPropagation(); const a = b.dataset.act;
         if (a === 'dl') downloadFile(e); else if (a === 'rn') renameEntry(e); else if (a === 'del') deleteEntry(e); };
     });
   });
+  const all = $('check-all');
+  all.onchange = () => {
+    $('listing').querySelectorAll('.rowcheck').forEach((cb, idx) => {
+      cb.checked = all.checked; const e = entries[idx];
+      if (all.checked) selected.set(e.path, e); else selected.delete(e.path);
+    });
+    syncSelBar();
+  };
+  syncSelBar();
 }
+
+function syncSelBar() {
+  const bar = $('selbar'); if (!bar) return;
+  const n = selected.size;
+  bar.style.display = n ? 'flex' : 'none';
+  if (n) $('sel-count').textContent = n + ' selected';
+  const all = $('check-all');
+  if (all) { all.checked = n > 0 && n === curEntries.length; all.indeterminate = n > 0 && n < curEntries.length; }
+}
+function clearSelection() { selected.clear(); $('listing').querySelectorAll('.rowcheck').forEach(c => c.checked = false); syncSelBar(); }
 
 // ---- file ops --------------------------------------------------------------
 async function deleteEntry(e) {
@@ -350,6 +378,43 @@ async function downloadFile(e) {
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   } catch (err) { toast('Download failed: ' + err.message, 'bad'); }
+}
+
+function triggerDownload(bytes, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([bytes])); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+// Recursively gather a selected entry's files into the zip list (folders keep
+// their structure via relative paths).
+async function collectForZip(e, rel, out) {
+  if (e.type === 'dir') {
+    const r = await rpc('list', { path: e.path });
+    for (const c of (r.entries || [])) await collectForZip(c, rel + '/' + c.name, out);
+  } else {
+    const r = await rpc('read', { path: e.path }, 120000);
+    out.push({ name: rel, data: b64ToBytes(r.data) });
+  }
+}
+
+async function downloadSelected() {
+  const items = [...selected.values()];
+  if (!items.length) return;
+  const btn = $('sel-zip'); const label = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Zipping…';
+  try {
+    const out = [];
+    for (const e of items) await collectForZip(e, e.name, out);
+    if (!out.length) { toast('Nothing to download (empty selection).', 'bad'); return; }
+    const zip = zipStore(out);
+    const zipName = (items.length === 1 ? items[0].name.replace(/\.[^.]+$/, '') : 'orbit-files') + '.zip';
+    triggerDownload(zip, zipName);
+    toast(`Downloaded ${out.length} file${out.length > 1 ? 's' : ''} as ${zipName}`, 'ok');
+  } catch (err) {
+    toast('Zip failed: ' + err.message, 'bad');
+  } finally { btn.disabled = false; btn.textContent = label; }
 }
 
 async function uploadFiles(fileList) {
@@ -675,6 +740,8 @@ $('nf-create').onclick = createNewFile;
 $('nf-overlay').onclick = (e) => { if (e.target === $('nf-overlay')) closeNewFile(); };
 $('nf-name').addEventListener('keydown', e => { if (e.key === 'Enter') createNewFile(); });
 $('btn-upload').onclick = () => activeDevice && $('file-input').click();
+$('sel-zip').onclick = downloadSelected;
+$('sel-clear').onclick = clearSelection;
 $('file-input').onchange = (e) => { if (e.target.files.length) uploadFiles(e.target.files); e.target.value = ''; };
 $('v-close').onclick = closeViewer;
 $('v-save').onclick = saveViewer;
