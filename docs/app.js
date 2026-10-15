@@ -19,6 +19,8 @@ let cwd = '';
 let curEntries = [];
 let navHistory = [];   // folders visited, for the Back button
 let selected = new Map();   // path -> entry, for multi-select download
+let viewMode = localStorage.getItem('orbit.view') || 'list';  // 'list' | 'grid'
+const thumbCache = new Map();  // path -> object URL for grid thumbnails
 
 // connection lifecycle
 let creds = { relay: '', token: '' };
@@ -281,10 +283,14 @@ function renderCrumbs(r) {
   });
 }
 
+function openOrNav(e) { e.type === 'dir' ? navTo(e.path) : openFile(e); }
+function toggleSelect(e, on) { if (on) selected.set(e.path, e); else selected.delete(e.path); }
+
 function renderListing(r) {
   renderCrumbs(r);
   const entries = r.entries || [];
   if (!entries.length) { showPlaceholder('Empty folder'); return; }
+  if (viewMode === 'grid') return renderGrid(entries);
   const rows = entries.map((e, i) => {
     const icon = e.type === 'dir' ? '📁' : iconFor(e.name);
     const size = e.type === 'dir' ? '—' : fmtSize(e.size);
@@ -330,11 +336,78 @@ function syncSelBar() {
   const bar = $('selbar'); if (!bar) return;
   const n = selected.size;
   bar.style.display = n ? 'flex' : 'none';
-  if (n) $('sel-count').textContent = n + ' selected';
+  if (n) {
+    let bytes = 0, hasDir = false;
+    for (const e of selected.values()) { bytes += (e.size || 0); if (e.type === 'dir') hasDir = true; }
+    $('sel-count').textContent = `${n} selected · ${fmtSize(bytes)}${hasDir ? '+' : ''}`;
+  }
   const all = $('check-all');
   if (all) { all.checked = n > 0 && n === curEntries.length; all.indeterminate = n > 0 && n < curEntries.length; }
 }
-function clearSelection() { selected.clear(); $('listing').querySelectorAll('.rowcheck').forEach(c => c.checked = false); syncSelBar(); }
+function clearSelection() { selected.clear(); $('listing').querySelectorAll('.rowcheck').forEach(c => c.checked = false); $('listing').querySelectorAll('.cell.sel').forEach(c => c.classList.remove('sel')); syncSelBar(); }
+
+function isImage(e) { return e.type === 'file' && (IMG.includes(ext(e.name)) || HEIC.includes(ext(e.name))); }
+
+function renderGrid(entries) {
+  const cells = entries.map((e, i) => {
+    const checked = selected.has(e.path) ? 'checked' : '';
+    const img = isImage(e);
+    const glyph = e.type === 'dir' ? '📁' : iconFor(e.name);
+    return `<div class="cell ${selected.has(e.path) ? 'sel' : ''}" data-i="${i}" style="animation-delay:${Math.min(i * 14, 300)}ms">
+      <label class="cellcheck"><input type="checkbox" class="rowcheck" ${checked}></label>
+      <div class="thumb ${img ? 'img' : ''}" data-thumb="${img ? i : ''}">${glyph}</div>
+      <div class="cellname" title="${esc(e.name)}">${esc(e.name)}</div>
+    </div>`;
+  }).join('');
+  $('listing').innerHTML = `<div class="grid">${cells}</div>`;
+  $('listing').querySelectorAll('.cell').forEach(cell => {
+    const e = entries[+cell.dataset.i];
+    cell.onclick = () => openOrNav(e);
+    const cb = cell.querySelector('.rowcheck');
+    cb.onclick = (ev) => ev.stopPropagation();
+    cb.onchange = () => { toggleSelect(e, cb.checked); cell.classList.toggle('sel', cb.checked); syncSelBar(); };
+  });
+  syncSelBar();
+  loadThumbs(entries);
+}
+
+async function loadThumbs(entries) {
+  const imgs = entries.map((e, i) => ({ e, i })).filter(o => isImage(o.e) && o.e.size <= 25 * 1024 * 1024);
+  if (!imgs.length) return;
+  let idx = 0; progressStart();
+  const worker = async () => {
+    while (idx < imgs.length) {
+      if (viewMode !== 'grid') break;
+      const { e, i } = imgs[idx++];
+      const cellThumb = () => $('listing').querySelector(`.thumb[data-thumb="${i}"]`);
+      const t0 = cellThumb(); if (t0) t0.classList.add('loading');
+      try {
+        let url = thumbCache.get(e.path);
+        if (!url) {
+          const r = await rpc('read', { path: e.path }, 120000);
+          const bytes = b64ToBytes(r.data);
+          let blob;
+          if (HEIC.includes(ext(e.name))) {
+            await loadHeicLib();
+            const out = await window.heic2any({ blob: new Blob([bytes], { type: 'image/heic' }), toType: 'image/jpeg', quality: 0.6 });
+            blob = Array.isArray(out) ? out[0] : out;
+          } else { blob = new Blob([bytes], { type: mimeByExt[ext(e.name)] || 'image/*' }); }
+          url = URL.createObjectURL(blob); thumbCache.set(e.path, url);
+        }
+        const t = cellThumb();
+        if (t) { t.style.backgroundImage = `url("${url}")`; t.classList.add('loaded'); t.classList.remove('loading'); t.textContent = ''; }
+      } catch { const t = cellThumb(); if (t) t.classList.remove('loading'); }
+    }
+  };
+  try { await Promise.all(Array.from({ length: Math.min(3, imgs.length) }, worker)); }
+  finally { progressDone(); }
+}
+
+function updateViewBtn() { const b = $('btn-view'); if (b) b.textContent = viewMode === 'grid' ? '☰ List' : '⊞ Grid'; }
+function setViewMode(m) {
+  viewMode = m; localStorage.setItem('orbit.view', m); updateViewBtn();
+  renderListing({ entries: curEntries });
+}
 
 // ---- file ops --------------------------------------------------------------
 async function deleteEntry(e) {
@@ -370,6 +443,7 @@ function bytesToB64(bytes) {
 
 async function downloadFile(e) {
   toast('Fetching ' + e.name + '…');
+  progressStart();
   try {
     const r = await rpc('read', { path: e.path }, 120000);
     const blob = new Blob([b64ToBytes(r.data)]);
@@ -378,6 +452,7 @@ async function downloadFile(e) {
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   } catch (err) { toast('Download failed: ' + err.message, 'bad'); }
+  finally { progressDone(); }
 }
 
 function triggerDownload(bytes, filename) {
@@ -404,6 +479,7 @@ async function downloadSelected() {
   if (!items.length) return;
   const btn = $('sel-zip'); const label = btn.textContent;
   btn.disabled = true; btn.textContent = 'Zipping…';
+  progressStart();
   try {
     const out = [];
     for (const e of items) await collectForZip(e, e.name, out);
@@ -414,11 +490,12 @@ async function downloadSelected() {
     toast(`Downloaded ${out.length} file${out.length > 1 ? 's' : ''} as ${zipName}`, 'ok');
   } catch (err) {
     toast('Zip failed: ' + err.message, 'bad');
-  } finally { btn.disabled = false; btn.textContent = label; }
+  } finally { btn.disabled = false; btn.textContent = label; progressDone(); }
 }
 
 async function uploadFiles(fileList) {
   const sep = cwd.includes('\\') ? '\\' : '/';
+  progressStart();
   for (const f of fileList) {
     try {
       toast('Uploading ' + f.name + '…');
@@ -428,16 +505,20 @@ async function uploadFiles(fileList) {
       toast('Uploaded ' + f.name, 'ok');
     } catch (err) { toast('Upload failed (' + f.name + '): ' + err.message, 'bad'); }
   }
+  progressDone();
   browse(cwd);
 }
 
 // ---- viewer / editor -------------------------------------------------------
 const IMG = ['png','jpg','jpeg','gif','webp','bmp','svg','ico','avif'];
+const HEIC = ['heic','heif'];
+const VIDEO = ['mp4','mov','webm','m4v','ogv'];
+const AUDIO = ['mp3','wav','ogg','m4a','flac','aac'];
 const TEXT = ['txt','md','markdown','json','js','mjs','cjs','ts','jsx','tsx','css','scss','html','htm','xml','yml','yaml','csv','log','ini','cfg','conf','sh','bash','py','rb','go','rs','c','h','cpp','hpp','java','kt','php','sql','toml','env','gitignore','bat','ps1','lua','vue','svelte'];
 function ext(n) { const i = n.lastIndexOf('.'); return i < 0 ? '' : n.slice(i + 1).toLowerCase(); }
 function iconFor(n) {
   const x = ext(n);
-  if (IMG.includes(x)) return '🖼️';
+  if (IMG.includes(x) || HEIC.includes(x)) return '🖼️';
   if (['zip','rar','7z','tar','gz'].includes(x)) return '🗜️';
   if (['mp3','wav','flac','ogg','m4a'].includes(x)) return '🎵';
   if (['mp4','mkv','mov','avi','webm'].includes(x)) return '🎬';
@@ -445,7 +526,24 @@ function iconFor(n) {
   if (TEXT.includes(x)) return '📄';
   return '📄';
 }
-const mimeByExt = { png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg', gif:'image/gif', webp:'image/webp', bmp:'image/bmp', svg:'image/svg+xml', ico:'image/x-icon', avif:'image/avif', pdf:'application/pdf' };
+const mimeByExt = { png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg', gif:'image/gif', webp:'image/webp', bmp:'image/bmp', svg:'image/svg+xml', ico:'image/x-icon', avif:'image/avif', pdf:'application/pdf',
+  mp4:'video/mp4', mov:'video/quicktime', webm:'video/webm', m4v:'video/x-m4v', ogv:'video/ogg',
+  mp3:'audio/mpeg', wav:'audio/wav', ogg:'audio/ogg', m4a:'audio/mp4', flac:'audio/flac', aac:'audio/aac' };
+
+// Load the HEIC decoder (libheif) on demand, only when a HEIC file is opened.
+let heicLoader = null;
+function loadHeicLib() {
+  if (window.heic2any) return Promise.resolve();
+  if (heicLoader) return heicLoader;
+  heicLoader = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js';
+    s.onload = resolve;
+    s.onerror = () => { heicLoader = null; reject(new Error('Could not load the HEIC decoder.')); };
+    document.head.appendChild(s);
+  });
+  return heicLoader;
+}
 
 let viewing = null;
 async function openFile(e) {
@@ -453,7 +551,7 @@ async function openFile(e) {
   viewing = e;
   $('v-title').textContent = e.name;
   $('v-size').textContent = fmtSize(e.size);
-  $('v-body').innerHTML = '<div class="center">Loading…</div>';
+  $('v-body').innerHTML = '<div class="center"><div class="vbar"><span></span></div>Loading…</div>';
   $('v-foot').style.display = 'flex';
   $('v-note').textContent = '';
   $('v-save').style.display = 'none';
@@ -462,13 +560,30 @@ async function openFile(e) {
     $('v-body').innerHTML = '<div class="center">File is too large to preview. Use Download.</div>';
     return;
   }
+  progressStart();
   try {
     const r = await rpc('read', { path: e.path }, 120000);
     const bytes = b64ToBytes(r.data);
-    if (IMG.includes(x)) {
+    if (HEIC.includes(x)) {
+      $('v-body').innerHTML = '<div class="center"><div class="vbar"><span></span></div>Decoding HEIC…</div>';
+      await loadHeicLib();
+      const out = await window.heic2any({ blob: new Blob([bytes], { type: 'image/heic' }), toType: 'image/jpeg', quality: 0.92 });
+      const jpg = Array.isArray(out) ? out[0] : out;
+      const url = URL.createObjectURL(jpg);
+      $('v-body').innerHTML = `<img src="${url}" alt="${esc(e.name)}">`;
+    } else if (IMG.includes(x)) {
       const blob = new Blob([bytes], { type: mimeByExt[x] || 'image/*' });
       const url = URL.createObjectURL(blob);
       $('v-body').innerHTML = `<img src="${url}" alt="${esc(e.name)}">`;
+    } else if (VIDEO.includes(x)) {
+      const blob = new Blob([bytes], { type: mimeByExt[x] || 'video/mp4' });
+      const url = URL.createObjectURL(blob);
+      $('v-body').innerHTML = `<video src="${url}" controls autoplay playsinline style="display:block;max-width:100%;max-height:72vh;margin:0 auto;background:#000"></video>
+        <div class="center" style="min-height:0;padding:10px 16px;font-size:12px">If the video doesn't play, your browser may not support this codec — use Download.</div>`;
+    } else if (AUDIO.includes(x)) {
+      const blob = new Blob([bytes], { type: mimeByExt[x] || 'audio/mpeg' });
+      const url = URL.createObjectURL(blob);
+      $('v-body').innerHTML = `<div class="center"><audio src="${url}" controls autoplay style="width:90%"></audio></div>`;
     } else if (x === 'pdf') {
       const blob = new Blob([bytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
@@ -484,8 +599,13 @@ async function openFile(e) {
     }
   } catch (err) {
     $('v-body').innerHTML = `<div class="center">Could not open: ${esc(err.message)}</div>`;
-  }
+  } finally { progressDone(); }
 }
+
+// ---- top loading bar -------------------------------------------------------
+let busy = 0;
+function progressStart() { busy++; const p = $('progress'); if (p) { p.classList.add('on'); } }
+function progressDone() { busy = Math.max(0, busy - 1); if (busy === 0) { const p = $('progress'); if (p) p.classList.remove('on'); } }
 function isProbablyText(bytes) {
   const n = Math.min(bytes.length, 4000); let ctrl = 0;
   for (let i = 0; i < n; i++) { const b = bytes[i]; if (b === 0) return false; if (b < 9 || (b > 13 && b < 32)) ctrl++; }
@@ -501,8 +621,8 @@ async function saveViewer() {
   } catch (err) { toast('Save failed: ' + err.message, 'bad'); }
 }
 function closeViewer() {
-  const f = $('v-body').querySelector('img, iframe');
-  if (f && f.src.startsWith('blob:')) URL.revokeObjectURL(f.src);
+  const f = $('v-body').querySelector('img, iframe, video, audio');
+  if (f) { try { if (f.pause) f.pause(); } catch {} if (f.src && f.src.startsWith('blob:')) URL.revokeObjectURL(f.src); }
   $('overlay').classList.remove('show'); $('v-body').innerHTML = ''; viewing = null;
 }
 
@@ -733,6 +853,8 @@ $('path-input').addEventListener('keydown', e => {
 });
 $('path-input').addEventListener('blur', () => setTimeout(hidePathInput, 120)); // allow Go click
 $('btn-refresh').onclick = () => activeDevice && browse(cwd);
+$('btn-view').onclick = () => setViewMode(viewMode === 'grid' ? 'list' : 'grid');
+updateViewBtn();
 $('btn-mkdir').onclick = () => activeDevice && mkdir();
 $('btn-newfile').onclick = () => activeDevice && openNewFile();
 $('nf-cancel').onclick = closeNewFile;
